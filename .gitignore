@@ -1,0 +1,38 @@
+# Abhängigkeiten
+node_modules/
+.pnpm-store/
+
+# Build
+dist/
+build/
+.vite/
+*.tsbuildinfo
+
+# Umgebung
+.env
+.env.*
+!.env.example
+
+# Editor / Betriebssystem
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+
+# Protokolle
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Arbeitsverzeichnisse
+.scratch/
+tmp/
+prototypes/
+
+# Unterlagen: gehoeren nicht auf die Teststrecke
+docs/
+CONTEXT.md
+assets/
+README.md
