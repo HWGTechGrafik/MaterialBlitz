@@ -2,8 +2,9 @@ import { einstellungenLesen, einstellungenSchreiben } from '../db';
 import { EINHEITEN_STANDARD } from '../model';
 import { neu, zustand } from '../store';
 import { blatt, h, melden } from '../ui';
+import { schluesselErzeugen } from './sperre';
 import { datum } from '../lib/format';
-import { erzeugen, formatieren, pruefen } from '../lib/lizenz';
+
 import { teilen } from '../lib/share';
 import { sicherungPacken } from '../lib/transfer';
 
@@ -149,95 +150,44 @@ function einheitenKarte(einheiten: string[]): HTMLElement {
 
 // ---------------------------------------------------------------- Lizenz
 
+/**
+ * Hier ist immer eine Lizenz eingetragen — ohne kommt man gar nicht so weit,
+ * der Sperrbildschirm steht davor.
+ */
 function lizenzKarte(lizenz?: string): HTMLElement {
-  if (lizenz) {
-    return h('div', { class: 'karte' },
-      h('h2', { text: 'Lizenz' }),
-      h('div', { class: 'paar' },
-        h('span', { class: 'k', text: 'Status' }),
-        h('span', { class: 'v', style: 'color:var(--blitz)', text: 'Freigeschaltet' }),
-      ),
-      h('div', { class: 'paar' },
-        h('span', { class: 'k', text: 'Schlüssel' }),
-        h('span', { class: 'v', text: lizenz }),
-      ),
-      h('button', {
-        class: 'knopf gefahr', type: 'button', text: 'Lizenz von diesem Gerät entfernen',
-        onclick: async () => {
-          zustand.einstellungen = await einstellungenSchreiben({ lizenz: undefined });
-          neu();
-        },
-      }),
-      h('button', {
-        class: 'knopf leise', type: 'button', text: 'Schlüssel für einen Kollegen erzeugen',
-        onclick: schluesselErzeugen,
-      }),
-    );
-  }
-
-  const eingabe = h('input', { class: 'gross', type: 'text', placeholder: 'MB-XXXX-XXXX-XXXX', autocomplete: 'off', spellcheck: 'false' });
-  const meldung = h('div', { class: 'meldung' });
-  const knopf = h('button', { class: 'knopf', type: 'button', text: 'Freischalten', disabled: true });
-
-  eingabe.addEventListener('input', () => {
-    eingabe.value = formatieren(eingabe.value);
-    eingabe.classList.remove('falsch');
-    meldung.textContent = '';
-    meldung.className = 'meldung';
-    knopf.disabled = eingabe.value.replace(/[^A-Z0-9]/g, '').length < 14;
-  });
-
-  knopf.onclick = async () => {
-    if (!pruefen(eingabe.value)) {
-      eingabe.classList.add('falsch');
-      meldung.textContent = 'Dieser Schlüssel stimmt nicht. Bitte Zeichen prüfen.';
-      meldung.className = 'meldung fehler';
-      return;
-    }
-    zustand.einstellungen = await einstellungenSchreiben({ lizenz: eingabe.value });
-    neu();
-  };
-
   return h('div', { class: 'karte' },
     h('h2', { text: 'Lizenz' }),
-    h('p', { text: 'Ohne Schlüssel kannst du Material erfassen, aber nicht ans Büro senden oder übergeben.' }),
-    h('label', { class: 'feld' }, h('span', { text: 'Lizenzschlüssel' }), eingabe),
-    meldung,
-    knopf,
-    h('p', { style: 'margin-top:8px', text: 'Den Schlüssel bekommst du von deinem Betrieb.' }),
-    // Auch ohne Lizenz erreichbar — sonst käme der Betrieb nie an den ersten
-    // Schlüssel, weil der Generator hinter der Lizenz läge, die er erzeugt.
+    h('div', { class: 'paar' },
+      h('span', { class: 'k', text: 'Status' }),
+      h('span', { class: 'v', style: 'color:var(--blitz)', text: 'Freigeschaltet' }),
+    ),
+    h('div', { class: 'paar' },
+      h('span', { class: 'k', text: 'Schlüssel' }),
+      h('span', { class: 'v', text: lizenz ?? '—' }),
+    ),
     h('button', {
-      class: 'knopf leise', type: 'button', text: 'Ich bin der Betrieb: Schlüssel erzeugen',
+      class: 'knopf leise', type: 'button', text: 'Schlüssel für einen Kollegen erzeugen',
       onclick: schluesselErzeugen,
     }),
-  );
-}
-
-function schluesselErzeugen(): void {
-  const wer = h('input', { type: 'text', placeholder: 'Für wen? z.B. Andreas H.' });
-  const ausgabe = h('div', { style: 'display:flex;flex-direction:column;gap:6px' });
-  blatt(
-    'Schlüssel ausgeben',
-    [
-      h('p', { class: 'hinweis', style: 'padding:0',
-        text: 'Der Name dient nur deiner eigenen Liste — im Schlüssel steckt er nicht.' }),
-      h('label', { class: 'feld' }, wer),
-      h('button', {
-        class: 'knopf zweit', type: 'button', text: 'Erzeugen',
-        onclick: () => {
-          const k = erzeugen();
-          ausgabe.prepend(
-            h('div', { class: 'paar' },
-              h('span', { class: 'v', style: 'font-weight:700', text: k }),
-              h('span', { class: 'k', text: wer.value.trim() || 'ohne Namen' }),
-            ),
-          );
-          wer.value = '';
-        },
-      }),
-      ausgabe,
-    ],
-    [{ text: 'Schließen', art: 'zweit' }],
+    h('button', {
+      class: 'knopf gefahr', type: 'button', text: 'Lizenz von diesem Gerät entfernen',
+      onclick: () => {
+        blatt(
+          'Lizenz entfernen?',
+          [h('p', { class: 'hinweis', style: 'padding:0',
+            text: 'Danach ist die App gesperrt, bis wieder ein Schlüssel eingegeben wird. Deine Daten bleiben erhalten.' })],
+          [
+            { text: 'Abbrechen', art: 'zweit' },
+            {
+              text: 'Entfernen', art: 'gefahr',
+              tun: async () => {
+                zustand.einstellungen = await einstellungenSchreiben({ lizenz: undefined });
+                neu();
+              },
+            },
+          ],
+        );
+      },
+    }),
   );
 }

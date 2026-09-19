@@ -6,7 +6,7 @@ import {
   istZaehlbar, positionHinzufuegen, runden,
   type Baustelle, type Kunde, type Position, type Schein,
 } from '../model';
-import { freigeschaltet, gehe, neu, zustand } from '../store';
+import { gehe, neu, zustand } from '../store';
 import { blatt, h, langDruck, melden } from '../ui';
 import { datum, menge as mengeText, zahl, zeit } from '../lib/format';
 import { csvDatei } from '../lib/csv';
@@ -193,25 +193,17 @@ async function fussBauen(
   if (block) { fuss.append(zifferblock(schein)); return fuss; }
   if (sucheOffen) { fuss.append(await suchfeld(baustelle)); return fuss; }
 
-  const leerer = schein.positionen.length === 0;
-  const gesperrt = !freigeschaltet();
-
   fuss.append(
     h('div', { class: 'polster' },
       h('button', {
         class: 'knopf', type: 'button', text: 'Ans Büro senden',
-        disabled: leerer || gesperrt,
+        disabled: schein.positionen.length === 0,
         onclick: () => senden(baustelle, kunde, schein),
       }),
-      gesperrt
-        ? h('div', { class: 'merk' },
-            h('span', { text: '🔒' }),
-            h('span', { html: '<b>Ohne Lizenz gesperrt.</b> Erfassen geht, Senden und Übergeben nicht. Schlüssel in den Einstellungen eintragen.' }),
-          )
-        : h('button', {
-            class: 'knopf leise', type: 'button', text: 'Übergeben, Bezeichnung, mehr…',
-            onclick: () => mehr(baustelle, kunde, schein),
-          }),
+      h('button', {
+        class: 'knopf leise', type: 'button', text: 'Übergeben, Bezeichnung, mehr…',
+        onclick: () => mehr(baustelle, kunde, schein),
+      }),
     ),
   );
   return fuss;

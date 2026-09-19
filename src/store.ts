@@ -31,9 +31,9 @@ export function gehe(ansicht: Ansicht, baustelleId?: number): void {
 }
 
 /**
- * Ohne gueltige Lizenz laesst sich erfassen, aber nicht abgeben.
- * Hartes Sperren machte die App unbewertbar — niemand kauft, was er nicht
- * ausprobieren darf.
+ * Ohne gueltigen Schluessel kommt die App gar nicht erst hoch — kein Anlegen,
+ * kein Erfassen, nichts. Vor dem Sperrbildschirm liegt nur der
+ * Schluesselgenerator, sonst kaeme der Betrieb nie an den ersten Schluessel.
  */
 export function freigeschaltet(): boolean {
   return Boolean(zustand.einstellungen?.lizenz);

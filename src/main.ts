@@ -1,12 +1,13 @@
 import './styles.css';
 import { registerSW } from 'virtual:pwa-register';
 import { einstellungenLesen } from './db';
-import { gehe, neu, zeichnerSetzen, zustand, type Ansicht } from './store';
+import { freigeschaltet, gehe, neu, zeichnerSetzen, zustand, type Ansicht } from './store';
 import { blatt, h } from './ui';
 import { uebersicht } from './views/uebersicht';
 import { katalogView } from './views/katalog';
 import { einstellungenView } from './views/einstellungen';
 import { scheinView, scheinZuruecksetzen } from './views/schein';
+import { sperreView } from './views/sperre';
 
 const wurzel = document.getElementById('app')!;
 
@@ -45,8 +46,12 @@ async function zeichnen(): Promise<void> {
   if (laeuft) return;
   laeuft = true;
   try {
-    const teile =
-      zustand.ansicht === 'schein'
+    // Ohne gueltigen Schluessel kommt die App gar nicht erst hoch.
+    const gesperrt = !freigeschaltet();
+
+    const teile = gesperrt
+      ? sperreView()
+      : zustand.ansicht === 'schein'
         ? await scheinView()
         : zustand.ansicht === 'katalog'
           ? await katalogView()
@@ -56,8 +61,8 @@ async function zeichnen(): Promise<void> {
 
     const schirm = h('div', { class: 'schirm' }, ...teile);
     // Im Schein zaehlt jeder Millimeter Hoehe: dort keine Reiterleiste,
-    // der Pfeil oben links fuehrt zurueck.
-    if (zustand.ansicht !== 'schein') schirm.append(reiterleiste());
+    // der Pfeil oben links fuehrt zurueck. Im gesperrten Zustand ebenso wenig.
+    if (!gesperrt && zustand.ansicht !== 'schein') schirm.append(reiterleiste());
 
     wurzel.replaceChildren(schirm);
   } finally {
