@@ -205,6 +205,12 @@ function lizenzKarte(lizenz?: string): HTMLElement {
     meldung,
     knopf,
     h('p', { style: 'margin-top:8px', text: 'Den Schlüssel bekommst du von deinem Betrieb.' }),
+    // Auch ohne Lizenz erreichbar — sonst käme der Betrieb nie an den ersten
+    // Schlüssel, weil der Generator hinter der Lizenz läge, die er erzeugt.
+    h('button', {
+      class: 'knopf leise', type: 'button', text: 'Ich bin der Betrieb: Schlüssel erzeugen',
+      onclick: schluesselErzeugen,
+    }),
   );
 }
 
