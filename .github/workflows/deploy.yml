@@ -33,7 +33,11 @@ jobs:
       # zu selten geaendert. Neu erzeugen: node scripts/icons.mjs
       - run: npm run build
 
+      # enablement schaltet Pages beim ersten Lauf selbst frei — sonst
+      # scheitert der Deploy, solange niemand es von Hand eingestellt hat.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
