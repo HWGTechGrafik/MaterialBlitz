@@ -2,7 +2,7 @@ import type { Baustelle, Kunde, Schein } from '../model';
 import { datum, dateinameTeil, datumSortierbar, menge, zeit, zeitKompakt } from './format';
 
 const SPALTEN = [
-  'Datum', 'Zeit', 'Kunde', 'Baustelle', 'Bereich',
+  'Datum', 'Zeit', 'Kunde', 'Projekt', 'Bereich',
   'Material', 'Menge', 'Einheit', 'Nachtrag',
 ] as const;
 

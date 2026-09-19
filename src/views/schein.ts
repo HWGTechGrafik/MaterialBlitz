@@ -59,7 +59,7 @@ function kopfBauen(baustelle: Baustelle, kunde: Kunde | undefined, schein: Schei
     'div',
     { class: 'kopf' },
     h('button', {
-      class: 'zurueck', type: 'button', 'aria-label': 'Zurück zu den Baustellen',
+      class: 'zurueck', type: 'button', 'aria-label': 'Zurück zu den Projekten',
       html: '&lsaquo;',
       onclick: () => { scheinZuruecksetzen(); gehe('uebersicht'); },
     }),
@@ -316,7 +316,7 @@ async function neuerArtikel(name: string): Promise<void> {
   blatt(
     'Neuer Artikel',
     [
-      h('p', { class: 'hinweis', style: 'padding:0', text: `„${name}" landet im Katalog und ist auf jeder Baustelle wieder da.` }),
+      h('p', { class: 'hinweis', style: 'padding:0', text: `„${name}" landet im Katalog und ist in jedem Projekt wieder da.` }),
       h('label', { class: 'feld' }, h('span', { text: 'Einheit' }), auswahl),
     ],
     [
@@ -415,7 +415,7 @@ function bezeichnen(schein: Schein): void {
     'Bezeichnung',
     [
       h('p', { class: 'hinweis', style: 'padding:0',
-        text: 'Hilft, mehrere Scheine derselben Baustelle auseinanderzuhalten. Leer lassen ist der Normalfall.' }),
+        text: 'Hilft, mehrere Scheine desselben Projekts auseinanderzuhalten. Leer lassen ist der Normalfall.' }),
       h('label', { class: 'feld' }, feld),
     ],
     [

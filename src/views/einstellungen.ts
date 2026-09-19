@@ -67,7 +67,7 @@ async function sicherungKarte(): Promise<HTMLElement> {
   return h('div', { class: 'karte' },
     h('h2', { text: 'Sicherung' }),
     h('p', {
-      text: 'Enthält alles: Katalog, Kunden, Baustellen, Firmenkopf und die Historie. Dieselbe Datei richtet auch ein neues Handy ein.',
+      text: 'Enthält alles: Katalog, Kunden, Projekte, Firmenkopf und die Historie. Dieselbe Datei richtet auch ein neues Handy ein.',
     }),
     h('div', { class: 'paar' },
       h('span', { class: 'k', text: 'Zuletzt gesichert' }),
@@ -88,7 +88,7 @@ async function sicherungKarte(): Promise<HTMLElement> {
       },
     }),
     h('p', { style: 'margin-top:8px',
-      text: 'Einlesen geht über „Datei einlesen" in der Baustellen-Übersicht — dort, wo auch übergebene Scheine ankommen.' }),
+      text: 'Einlesen geht über „Datei einlesen" in der Projekt-Übersicht — dort, wo auch übergebene Scheine ankommen.' }),
   );
 }
 

@@ -10,7 +10,7 @@ export async function katalogView(): Promise<HTMLElement[]> {
     { class: 'kopf' },
     h('div', { class: 'kopf-text' },
       h('div', { class: 'eyebrow', text: 'Register' }),
-      h('h1', { text: reiter === 'katalog' ? 'Katalog' : 'Baustellen' }),
+      h('h1', { text: reiter === 'katalog' ? 'Katalog' : 'Projekte' }),
     ),
   );
 
@@ -21,7 +21,7 @@ export async function katalogView(): Promise<HTMLElement[]> {
         onclick: () => { reiter = 'katalog'; neu(); },
       }),
       h('button', {
-        class: 'knopf' + (reiter === 'baustellen' ? '' : ' zweit'), type: 'button', text: 'Baustellen',
+        class: 'knopf' + (reiter === 'baustellen' ? '' : ' zweit'), type: 'button', text: 'Projekte',
         onclick: () => { reiter = 'baustellen'; neu(); },
       }),
     ),
@@ -46,7 +46,7 @@ async function katalogListe(rumpf: HTMLElement): Promise<void> {
   );
 
   if (!artikel.length) {
-    rumpf.append(h('div', { class: 'leer', text: 'Der Katalog wächst von selbst: was du auf einer Baustelle aufschreibst, steht danach hier.' }));
+    rumpf.append(h('div', { class: 'leer', text: 'Der Katalog wächst von selbst: was du in einem Projekt aufschreibst, steht danach hier.' }));
     return;
   }
 
@@ -118,7 +118,7 @@ async function baustellenListe(rumpf: HTMLElement): Promise<void> {
   const sortiert = alle.filter((b) => !b.versteckt).sort((a, b) => b.zuletzt - a.zuletzt);
 
   if (!sortiert.length) {
-    rumpf.append(h('div', { class: 'leer', text: 'Noch keine Baustelle angelegt.' }));
+    rumpf.append(h('div', { class: 'leer', text: 'Noch kein Projekt angelegt.' }));
     return;
   }
 
@@ -171,7 +171,7 @@ async function baustelleBearbeiten(id: number): Promise<void> {
   ];
 
   blatt(
-    'Baustelle',
+    'Projekt',
     [
       h('label', { class: 'feld' }, h('span', { text: 'Ort' }), ort),
       h('label', { class: 'feld' }, h('span', { text: 'Kunde' }), kundeFeld),
@@ -180,10 +180,10 @@ async function baustelleBearbeiten(id: number): Promise<void> {
       scheine
         ? h('div', { class: 'merk' },
             h('span', { text: 'ℹ️' }),
-            h('span', { text: `${scheine} Schein(e) hängen daran. Löschen ist deshalb nicht möglich — „Abschließen" nimmt die Baustelle aus der Übersicht, die Historie bleibt.` }),
+            h('span', { text: `${scheine} Schein(e) hängen daran. Löschen ist deshalb nicht möglich — „Abschließen" nimmt das Projekt aus der Übersicht, die Historie bleibt.` }),
           )
         : h('button', {
-            class: 'knopf gefahr', type: 'button', text: 'Baustelle löschen',
+            class: 'knopf gefahr', type: 'button', text: 'Projekt löschen',
             onclick: async () => {
               await db.baustellen.delete(id);
               document.querySelector('.schatten')?.remove();

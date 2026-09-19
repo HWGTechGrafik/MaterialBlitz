@@ -12,7 +12,7 @@ import { sperreView } from './views/sperre';
 const wurzel = document.getElementById('app')!;
 
 const REITER: Array<{ ansicht: Ansicht; zeichen: string; text: string }> = [
-  { ansicht: 'uebersicht', zeichen: '🏗', text: 'Baustellen' },
+  { ansicht: 'uebersicht', zeichen: '🏗', text: 'Projekte' },
   { ansicht: 'katalog', zeichen: '📋', text: 'Katalog' },
   { ansicht: 'einstellungen', zeichen: '⚙', text: 'Einstellungen' },
 ];

@@ -31,7 +31,7 @@ export async function uebersicht(): Promise<HTMLElement[]> {
       'div',
       { class: 'kopf-text' },
       h('div', { class: 'eyebrow', text: 'MaterialBlitz' }),
-      h('h1', { text: 'Baustellen' }),
+      h('h1', { text: 'Projekte' }),
     ),
   );
 
@@ -42,7 +42,7 @@ export async function uebersicht(): Promise<HTMLElement[]> {
 
   if (!offen.length) {
     liste.append(
-      h('div', { class: 'leer', text: 'Noch keine Baustelle. Unten anlegen — danach tippst du sie nur noch an.' }),
+      h('div', { class: 'leer', text: 'Noch kein Projekt. Unten anlegen — danach tippst du es nur noch an.' }),
     );
   }
 
@@ -74,7 +74,7 @@ export async function uebersicht(): Promise<HTMLElement[]> {
     h(
       'div',
       { class: 'polster' },
-      h('button', { class: 'knopf', type: 'button', text: 'Neue Baustelle', onclick: baustelleAnlegen }),
+      h('button', { class: 'knopf', type: 'button', text: 'Neues Projekt', onclick: baustelleAnlegen }),
       // Der Import gehoert hierher, nicht in die Baustelle: wer einen Schein
       // empfaengt, hat die zugehoerige Baustelle meist noch gar nicht.
       h('button', { class: 'knopf leise', type: 'button', text: 'Datei einlesen', onclick: einlesen }),
@@ -124,7 +124,7 @@ function baustelleAnlegen(): void {
   const ort = h('input', { type: 'text', placeholder: 'z.B. Hauptstraße 5' });
   const kunde = h('input', { type: 'text', placeholder: 'leer lassen für Werkstatt o.ä.' });
   blatt(
-    'Neue Baustelle',
+    'Neues Projekt',
     [
       h('label', { class: 'feld' }, h('span', { text: 'Ort' }), ort),
       h('label', { class: 'feld' }, h('span', { text: 'Kunde (optional)' }), kunde),
@@ -167,7 +167,7 @@ async function einlesen(): Promise<void> {
       'Schein übernehmen?',
       [
         h('div', { class: 'karte' },
-          zeile('Baustelle', v.ort),
+          zeile('Projekt', v.ort),
           zeile('Positionen', String(v.positionen)),
           zeile('Von', v.absender),
           zeile('Erstellt', v.zeitpunkt),
@@ -195,7 +195,7 @@ async function einlesen(): Promise<void> {
       h('div', { class: 'karte' },
         zeile('Erstellt', v.zeitpunkt),
         zeile('Artikel', String(v.artikel)),
-        zeile('Baustellen', String(v.baustellen)),
+        zeile('Projekte', String(v.baustellen)),
         zeile('Scheine', String(v.scheine)),
       ),
       h('div', { class: 'merk warnung' },
