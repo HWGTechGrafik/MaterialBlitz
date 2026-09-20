@@ -1,15 +1,16 @@
 import { einstellungenSchreiben } from '../db';
 import { neu, zustand } from '../store';
-import { blatt, h, marke } from '../ui';
-import { erzeugen, formatieren, pruefen } from '../lib/lizenz';
+import { h, marke } from '../ui';
+import { formatieren, pruefen } from '../lib/lizenz';
 
 /**
  * Sperrbildschirm. Ohne gueltigen Schluessel laeuft nichts — kein Anlegen,
  * kein Erfassen, nichts.
  *
- * Der Schluesselgenerator bleibt trotzdem erreichbar: sonst kaeme der Betrieb
- * nie an den ersten Schluessel, weil der Generator hinter genau der Lizenz
- * laege, die er erzeugt.
+ * **Hier gibt es bewusst keinen Schluesselgenerator.** Ein Generator vor der
+ * Sperre macht die Sperre wertlos — jeder tippt sich selbst einen Schluessel.
+ * Schluessel gibt der Betrieb mit einer eigenen, nicht veroeffentlichten
+ * Datei aus (schluessel-generator.html).
  */
 export function sperreView(): HTMLElement[] {
   const eingabe = h('input', {
@@ -59,41 +60,9 @@ export function sperreView(): HTMLElement[] {
       knopf,
       h('p', { style: 'margin-top:14px;font-size:13px;color:var(--ink-muted)',
         text: 'Den Schlüssel bekommst du von deinem Betrieb.' }),
-      h('button', {
-        class: 'knopf leise', type: 'button', text: 'Ich bin der Betrieb: Schlüssel erzeugen',
-        onclick: schluesselErzeugen,
-      }),
     ),
   );
 
   setTimeout(() => eingabe.focus(), 120);
   return [schirm];
-}
-
-export function schluesselErzeugen(): void {
-  const wer = h('input', { type: 'text', placeholder: 'Für wen? z.B. Andreas H.' });
-  const ausgabe = h('div', { style: 'display:flex;flex-direction:column;gap:6px' });
-  blatt(
-    'Schlüssel ausgeben',
-    [
-      h('p', { class: 'hinweis', style: 'padding:0',
-        text: 'Der Name dient nur deiner eigenen Liste — im Schlüssel steckt er nicht. Notiere dir, wer welchen bekommen hat.' }),
-      h('label', { class: 'feld' }, wer),
-      h('button', {
-        class: 'knopf zweit', type: 'button', text: 'Erzeugen',
-        onclick: () => {
-          const k = erzeugen();
-          ausgabe.prepend(
-            h('div', { class: 'paar' },
-              h('span', { class: 'v', style: 'font-weight:700', text: k }),
-              h('span', { class: 'k', text: wer.value.trim() || 'ohne Namen' }),
-            ),
-          );
-          wer.value = '';
-        },
-      }),
-      ausgabe,
-    ],
-    [{ text: 'Schließen', art: 'zweit' }],
-  );
 }

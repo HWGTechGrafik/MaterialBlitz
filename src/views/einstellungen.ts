@@ -2,7 +2,6 @@ import { einstellungenLesen, einstellungenSchreiben } from '../db';
 import { EINHEITEN_STANDARD } from '../model';
 import { neu, zustand } from '../store';
 import { blatt, h, melden } from '../ui';
-import { schluesselErzeugen } from './sperre';
 import { datum } from '../lib/format';
 
 import { teilen } from '../lib/share';
@@ -165,10 +164,6 @@ function lizenzKarte(lizenz?: string): HTMLElement {
       h('span', { class: 'k', text: 'Schlüssel' }),
       h('span', { class: 'v', text: lizenz ?? '—' }),
     ),
-    h('button', {
-      class: 'knopf leise', type: 'button', text: 'Schlüssel für einen Kollegen erzeugen',
-      onclick: schluesselErzeugen,
-    }),
     h('button', {
       class: 'knopf gefahr', type: 'button', text: 'Lizenz von diesem Gerät entfernen',
       onclick: () => {

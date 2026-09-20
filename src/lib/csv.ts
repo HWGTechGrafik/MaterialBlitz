@@ -1,8 +1,10 @@
 import type { Baustelle, Kunde, Schein } from '../model';
 import { datum, dateinameTeil, datumSortierbar, menge, zeit, zeitKompakt } from './format';
 
+// Das Buero bekommt weiterhin "Baustelle" — dort haengen Vorlagen und
+// Gewohnheiten daran. In der App heisst dasselbe Ding "Projekt".
 const SPALTEN = [
-  'Datum', 'Zeit', 'Kunde', 'Projekt', 'Bereich',
+  'Datum', 'Zeit', 'Kunde', 'Baustelle', 'Bereich',
   'Material', 'Menge', 'Einheit', 'Nachtrag',
 ] as const;
 

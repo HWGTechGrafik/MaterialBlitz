@@ -58,11 +58,6 @@ export function pruefen(eingabe: string): boolean {
   return t.length === 12 && pruefsumme(t.slice(0, 8)) === t.slice(8, 12);
 }
 
-/** Schluessel ausgeben — gehoert dem Betrieb, nicht dem Monteur. */
-export function erzeugen(): string {
-  const werte = new Uint8Array(8);
-  crypto.getRandomValues(werte);
-  let rumpf = '';
-  for (const w of werte) rumpf += ALPHABET[w % 32];
-  return `MB-${rumpf.slice(0, 4)}-${rumpf.slice(4, 8)}-${pruefsumme(rumpf)}`;
-}
+// erzeugen() gibt es hier bewusst nicht: Die App prueft Schluessel, sie gibt
+// keine aus. Das macht der Betrieb mit einer eigenen, nicht veroeffentlichten
+// Datei (schluessel-generator.html).
