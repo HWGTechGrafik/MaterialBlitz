@@ -76,7 +76,10 @@ export async function sicherungPacken(): Promise<File> {
     mblitz: 1,
     typ: 'sicherung',
     erzeugt: Date.now(),
-    sicherung: { artikel, kunden, baustellen, scheine, einstellungen },
+    // Die Lizenz bleibt draussen: eine Sicherungsdatei waere sonst ein
+    // Generalschluessel, den jeder weitergeben koennte. Nach einem
+    // Geraetewechsel wird der Schluessel neu eingegeben.
+    sicherung: { artikel, kunden, baustellen, scheine, einstellungen: { ...einstellungen, lizenz: undefined } },
   };
   const name = `MaterialBlitz_Sicherung_${datumSortierbar(umschlag.erzeugt)}.txt`;
   return zuDatei(umschlag, name);
@@ -189,7 +192,8 @@ export async function sicherungEinspielen(
       await db.kunden.bulkAdd(s.kunden);
       await db.baustellen.bulkAdd(s.baustellen);
       await db.scheine.bulkAdd(s.scheine);
-      await db.einstellungen.put({ ...s.einstellungen, id: 1 });
+      const eigene = await einstellungenLesen();
+      await db.einstellungen.put({ ...s.einstellungen, id: 1, lizenz: eigene.lizenz });
       return;
     }
 
@@ -203,10 +207,29 @@ export async function sicherungEinspielen(
         await db.kunden.add({ name: k.name, versteckt: k.versteckt });
       }
     }
+    // Baustellen anlegen und dabei merken, welche alte Nummer zu welcher
+    // neuen gehoert — die Scheine haengen daran.
+    const nummern = new Map<number, number>();
     for (const b of s.baustellen) {
-      if (!(await db.baustellen.where('ort').equals(b.ort).first())) {
-        await db.baustellen.add({ ort: b.ort, zuletzt: b.zuletzt, abgeschlossen: b.abgeschlossen });
-      }
+      const da = await db.baustellen.where('ort').equals(b.ort).first();
+      const id = da?.id ?? (await db.baustellen.add({
+        ort: b.ort, zuletzt: b.zuletzt, abgeschlossen: b.abgeschlossen,
+      }));
+      if (b.id !== undefined) nummern.set(b.id, id as number);
+    }
+
+    // Scheine wurden beim Zusammenfuehren vorher gar nicht uebernommen — nach
+    // einem Geraeteverlust waere die gesamte Historie verloren gewesen.
+    const vorhanden = await db.scheine.toArray();
+    for (const sch of s.scheine) {
+      const zielId = sch.baustelleId !== undefined ? nummern.get(sch.baustelleId) : undefined;
+      if (zielId === undefined) continue;
+      const doppelt = vorhanden.some(
+        (v) => v.baustelleId === zielId && v.erstellt === sch.erstellt,
+      );
+      if (doppelt) continue;
+      const { id: _weg, ...rest } = sch;
+      await db.scheine.add({ ...rest, baustelleId: zielId });
     }
   });
   await einstellungenSchreiben({ letzteSicherung: Date.now(), neueArtikel: 0 });
