@@ -46,7 +46,10 @@ html, body { height: 100%; }
 
 body {
   margin: 0;
-  background: var(--ground);
+  /* Nicht --ground: mit dieser Farbe faerbt iOS den Rand *ausserhalb* des
+     Dokuments — Statusleiste oben, Home-Balken unten. Grau klaffte dort als
+     Streifen; in der Farbe der Leisten faellt er nicht mehr auf. */
+  background: var(--surface);
   color: var(--ink);
   font-family: var(--ui);
   font-size: 16px;
@@ -58,7 +61,16 @@ button, input, select, textarea { font: inherit; color: inherit; }
 :focus-visible { outline: 3px solid var(--ader); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
-#app { height: 100%; }
+/* Die Flaeche zwischen den Leisten bleibt grau — auch die Raender neben dem
+   Schirm auf breiten Bildschirmen. */
+#app { height: 100%; background: var(--ground); }
+
+/* 100% loest auf iOS zur *kleinen* Ansichtshoehe auf: das Dokument blieb rund
+   30 Punkte kuerzer als der Schirm, und dieser Rest fiel niemandem zu.
+   dvh nimmt die tatsaechliche Hoehe — die Liste bekommt sie. */
+@supports (height: 100dvh) {
+  html, body, #app { height: 100dvh; }
+}
 
 .schirm {
   max-width: 520px;
