@@ -115,3 +115,71 @@ export function langDruck(knopf: HTMLElement, dauer: number, tun: () => void): v
   knopf.addEventListener('pointercancel', ende);
   knopf.addEventListener('contextmenu', (ev) => ev.preventDefault());
 }
+
+// ------------------------------------------------------------- Sinnbilder
+
+/**
+ * Strichzeichnungen fuer die Knoepfe im Kopf. Einfarbig und ohne Fuellung —
+ * sie erben die Schriftfarbe und stimmen damit auch im dunklen Modus.
+ */
+const IKONEN = {
+  plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
+  einlesen:
+    '<path d="M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/><path d="M12 3v11"/><path d="M8 10l4 4 4-4"/>',
+  senden:
+    '<path d="M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/><path d="M12 14V3"/><path d="M8 7l4-4 4 4"/>',
+  mehr:
+    '<circle cx="5" cy="12" r="1.7" fill="currentColor" stroke="none"/>' +
+    '<circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/>' +
+    '<circle cx="19" cy="12" r="1.7" fill="currentColor" stroke="none"/>',
+  liste: '<path d="M5 7h14"/><path d="M5 12h14"/><path d="M5 17h9"/>',
+  haus: '<path d="M4 20V8l8-4.5 8 4.5v12"/><path d="M3 20h18"/><path d="M10 20v-6h4v6"/>',
+} as const;
+
+export type IkonName = keyof typeof IKONEN;
+
+export function ikon(name: IkonName): SVGElement {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'ikon');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.9');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.innerHTML = IKONEN[name];
+  return svg;
+}
+
+/**
+ * Knopf mit Sinnbild rechts oben im Kopf. Er traegt keine Beschriftung,
+ * deshalb immer aria-label **und** title: wer unsicher ist, haelt den Finger
+ * drauf und liest nach.
+ */
+export function kopfKnopf(o: {
+  ikon: IkonName;
+  titel: string;
+  tun: () => void;
+  art?: 'haupt' | 'aktiv';
+  gesperrt?: boolean;
+}): HTMLButtonElement {
+  return h(
+    'button',
+    {
+      class: 'kopf-tat' + (o.art === 'haupt' ? ' haupt' : ''),
+      type: 'button',
+      'aria-label': o.titel,
+      title: o.titel,
+      'aria-current': o.art === 'aktiv' ? 'true' : undefined,
+      disabled: o.gesperrt,
+      onclick: o.tun,
+    },
+    ikon(o.ikon),
+  );
+}
+
+/** Die Knopfgruppe rechts oben, bei Bedarf mit dem Zaehler darueber. */
+export function kopfRechts(zaehler: Kind, ...knoepfe: Kind[]): HTMLElement {
+  return h('div', { class: 'kopf-rechts' }, zaehler, h('div', { class: 'kopf-taten' }, ...knoepfe));
+}

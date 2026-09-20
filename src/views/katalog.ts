@@ -1,34 +1,41 @@
 import { db, einstellungenLesen } from '../db';
 import { neu } from '../store';
-import { blatt, h, melden } from '../ui';
+import { blatt, h, kopfKnopf, kopfRechts, melden } from '../ui';
+import { baustelleAnlegen } from './uebersicht';
 
 let reiter: 'katalog' | 'baustellen' = 'katalog';
 
 export async function katalogView(): Promise<HTMLElement[]> {
+  const imKatalog = reiter === 'katalog';
+
+  // Welches Register offen ist, steht als Überschrift da — die Sinnbilder
+  // brauchen daneben keine Beschriftung mehr, nur einen sichtbar aktiven Zustand.
   const kopf = h(
     'div',
     { class: 'kopf' },
     h('div', { class: 'kopf-text' },
       h('div', { class: 'eyebrow', text: 'Register' }),
-      h('h1', { text: reiter === 'katalog' ? 'Katalog' : 'Projekte' }),
+      h('h1', { text: imKatalog ? 'Katalog' : 'Projekte' }),
+    ),
+    kopfRechts(
+      null,
+      kopfKnopf({
+        ikon: 'liste', titel: 'Register Katalog', art: imKatalog ? 'aktiv' : undefined,
+        tun: () => { reiter = 'katalog'; neu(); },
+      }),
+      kopfKnopf({
+        ikon: 'haus', titel: 'Register Projekte', art: imKatalog ? undefined : 'aktiv',
+        tun: () => { reiter = 'baustellen'; neu(); },
+      }),
+      kopfKnopf({
+        ikon: 'plus', titel: imKatalog ? 'Artikel anlegen' : 'Neues Projekt', art: 'haupt',
+        tun: () => { if (imKatalog) void artikelBearbeiten(); else baustelleAnlegen(false); },
+      }),
     ),
   );
 
-  const umschalter = h('div', { class: 'polster', style: 'padding-bottom:0' },
-    h('div', { class: 'knopf-reihe' },
-      h('button', {
-        class: 'knopf' + (reiter === 'katalog' ? '' : ' zweit'), type: 'button', text: 'Katalog',
-        onclick: () => { reiter = 'katalog'; neu(); },
-      }),
-      h('button', {
-        class: 'knopf' + (reiter === 'baustellen' ? '' : ' zweit'), type: 'button', text: 'Projekte',
-        onclick: () => { reiter = 'baustellen'; neu(); },
-      }),
-    ),
-  );
-
-  const rumpf = h('div', { class: 'rumpf' }, umschalter);
-  if (reiter === 'katalog') await katalogListe(rumpf);
+  const rumpf = h('div', { class: 'rumpf' });
+  if (imKatalog) await katalogListe(rumpf);
   else await baustellenListe(rumpf);
 
   return [kopf, rumpf];
@@ -38,12 +45,6 @@ export async function katalogView(): Promise<HTMLElement[]> {
 
 async function katalogListe(rumpf: HTMLElement): Promise<void> {
   const artikel = (await db.artikel.toArray()).sort((a, b) => a.name.localeCompare(b.name, 'de'));
-
-  rumpf.append(
-    h('div', { class: 'polster' },
-      h('button', { class: 'knopf zweit', type: 'button', text: 'Artikel anlegen', onclick: () => artikelBearbeiten() }),
-    ),
-  );
 
   if (!artikel.length) {
     rumpf.append(h('div', { class: 'leer', text: 'Der Katalog wächst von selbst: was du in einem Projekt aufschreibst, steht danach hier.' }));

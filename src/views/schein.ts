@@ -7,7 +7,7 @@ import {
   type Baustelle, type Kunde, type Position, type Schein,
 } from '../model';
 import { gehe, neu, zustand } from '../store';
-import { blatt, h, langDruck, melden } from '../ui';
+import { blatt, h, kopfKnopf, kopfRechts, langDruck, melden } from '../ui';
 import { datum, menge as mengeText, zahl, zeit } from '../lib/format';
 import { csvDatei } from '../lib/csv';
 import { teilen } from '../lib/share';
@@ -45,11 +45,15 @@ export async function scheinView(): Promise<HTMLElement[]> {
 
   const erledigt = alle.filter((s) => s.zustand !== 'offen');
 
-  return [
+  const teile = [
     kopfBauen(baustelle, kunde, schein),
     await rumpfBauen(baustelle, schein, offene, erledigt),
-    await fussBauen(baustelle, kunde, schein),
   ];
+  // Der Fuss kommt nur, wenn er etwas zu zeigen hat. Sonst gehoert die
+  // gesamte Hoehe den Positionen und den Kacheln.
+  const fuss = await fussBauen(baustelle, schein);
+  if (fuss) teile.push(fuss);
+  return teile;
 }
 
 // ------------------------------------------------------------------- Kopf
@@ -70,7 +74,21 @@ function kopfBauen(baustelle: Baustelle, kunde: Kunde | undefined, schein: Schei
       h('h1', { text: baustelle.ort + (schein.bezeichnung ? ` · ${schein.bezeichnung}` : '') }),
       h('div', { class: 'unter', text: kunde?.name ?? 'ohne Kunden' }),
     ),
-    h('span', { class: 'zaehler', text: `${schein.positionen.length} Pos.` }),
+    kopfRechts(
+      h('span', { class: 'zaehler', text: `${schein.positionen.length} Pos.` }),
+      kopfKnopf({
+        ikon: 'mehr',
+        titel: 'Übergeben, Bezeichnung, mehr',
+        tun: () => mehr(baustelle, kunde, schein),
+      }),
+      kopfKnopf({
+        ikon: 'senden',
+        titel: 'Ans Büro senden',
+        art: 'haupt',
+        gesperrt: schein.positionen.length === 0,
+        tun: () => senden(baustelle, kunde, schein),
+      }),
+    ),
   );
 }
 
@@ -123,7 +141,7 @@ async function rumpfBauen(
   }
 
   // Kacheln
-  const liste = await kacheln(baustelle.id!, 8);
+  const liste = await kacheln(baustelle.id!, 10);
   if (liste.length) {
     const raster = h('div', { class: 'kacheln' });
     for (const a of liste) {
@@ -185,28 +203,10 @@ async function rumpfBauen(
 
 // -------------------------------------------------------------------- Fuss
 
-async function fussBauen(
-  baustelle: Baustelle, kunde: Kunde | undefined, schein: Schein,
-): Promise<HTMLElement> {
-  const fuss = h('div', { class: 'fuss' });
-
-  if (block) { fuss.append(zifferblock(schein)); return fuss; }
-  if (sucheOffen) { fuss.append(await suchfeld(baustelle)); return fuss; }
-
-  fuss.append(
-    h('div', { class: 'polster' },
-      h('button', {
-        class: 'knopf', type: 'button', text: 'Ans Büro senden',
-        disabled: schein.positionen.length === 0,
-        onclick: () => senden(baustelle, kunde, schein),
-      }),
-      h('button', {
-        class: 'knopf leise', type: 'button', text: 'Übergeben, Bezeichnung, mehr…',
-        onclick: () => mehr(baustelle, kunde, schein),
-      }),
-    ),
-  );
-  return fuss;
+async function fussBauen(baustelle: Baustelle, schein: Schein): Promise<HTMLElement | null> {
+  if (block) return h('div', { class: 'fuss' }, zifferblock(schein));
+  if (sucheOffen) return h('div', { class: 'fuss' }, await suchfeld(baustelle));
+  return null;
 }
 
 // ------------------------------------------------------------ Zifferblock

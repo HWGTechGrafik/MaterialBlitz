@@ -1,7 +1,7 @@
 import { db, einstellungenLesen, einstellungenSchreiben } from '../db';
 import { SICHERUNG_ARTIKEL, SICHERUNG_TAGE, type Baustelle, type Kunde } from '../model';
 import { gehe, neu, zustand } from '../store';
-import { blatt, h, marke, melden } from '../ui';
+import { blatt, h, kopfKnopf, kopfRechts, marke, melden } from '../ui';
 import { tageSeit } from '../lib/format';
 import { dateiWaehlen } from '../lib/share';
 import { scheinUebernehmen, sicherungEinspielen, vorschau } from '../lib/transfer';
@@ -33,6 +33,13 @@ export async function uebersicht(): Promise<HTMLElement[]> {
       h('div', { class: 'eyebrow', text: 'MaterialBlitz' }),
       h('h1', { text: 'Projekte' }),
     ),
+    kopfRechts(
+      null,
+      // Das Einlesen gehoert hierher, nicht in das Projekt: wer einen Schein
+      // empfaengt, hat das zugehoerige Projekt meist noch gar nicht.
+      kopfKnopf({ ikon: 'einlesen', titel: 'Datei einlesen', tun: einlesen }),
+      kopfKnopf({ ikon: 'plus', titel: 'Neues Projekt', art: 'haupt', tun: () => baustelleAnlegen() }),
+    ),
   );
 
   const liste = h('div', { class: 'rumpf' });
@@ -42,7 +49,7 @@ export async function uebersicht(): Promise<HTMLElement[]> {
 
   if (!offen.length) {
     liste.append(
-      h('div', { class: 'leer', text: 'Noch kein Projekt. Unten anlegen — danach tippst du es nur noch an.' }),
+      h('div', { class: 'leer', text: 'Noch kein Projekt. Oben rechts mit dem Plus anlegen — danach tippst du es nur noch an.' }),
     );
   }
 
@@ -68,20 +75,7 @@ export async function uebersicht(): Promise<HTMLElement[]> {
     );
   }
 
-  const fuss = h(
-    'div',
-    { class: 'fuss' },
-    h(
-      'div',
-      { class: 'polster' },
-      h('button', { class: 'knopf', type: 'button', text: 'Neues Projekt', onclick: baustelleAnlegen }),
-      // Der Import gehoert hierher, nicht in die Baustelle: wer einen Schein
-      // empfaengt, hat die zugehoerige Baustelle meist noch gar nicht.
-      h('button', { class: 'knopf leise', type: 'button', text: 'Datei einlesen', onclick: einlesen }),
-    ),
-  );
-
-  return [kopf, liste, fuss];
+  return [kopf, liste];
 }
 
 async function sicherungFaellig(): Promise<HTMLElement | null> {
@@ -120,7 +114,11 @@ async function sicherungFaellig(): Promise<HTMLElement | null> {
   );
 }
 
-function baustelleAnlegen(): void {
+/**
+ * Neues Projekt anlegen. `oeffnen` springt danach in den Schein — aus dem
+ * Register heraus bleibt man dagegen in der Liste stehen.
+ */
+export function baustelleAnlegen(oeffnen = true): void {
   const ort = h('input', { type: 'text', placeholder: 'z.B. Hauptstraße 5' });
   const kunde = h('input', { type: 'text', placeholder: 'leer lassen für Werkstatt o.ä.' });
   blatt(
@@ -143,7 +141,8 @@ function baustelleAnlegen(): void {
             kundeId = da?.id ?? (await db.kunden.add({ name: kn }));
           }
           const id = await db.baustellen.add({ ort: o, kundeId, zuletzt: Date.now() });
-          gehe('schein', id);
+          if (oeffnen) gehe('schein', id);
+          else neu();
         },
       },
     ],
