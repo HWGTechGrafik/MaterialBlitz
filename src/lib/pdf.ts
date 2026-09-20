@@ -97,7 +97,8 @@ export function pdfErzeugen(
       // Im PDF ausgeschrieben — anders als im CSV, wo die Spalte leer bleibt.
       // Das Blatt liest ein Mensch.
       ['Kunde', kunde?.name ?? 'ohne Kunden'],
-      ['Projekt', baustelle.ort],
+      // Wie im CSV: fuers Buero heisst es "Baustelle", in der App "Projekt".
+      ['Baustelle', baustelle.ort],
       ['Bereich', schein.bezeichnung || '—'],
       ['Datum', `${datum(stand)}, ${zeit(stand)}`],
     ];
