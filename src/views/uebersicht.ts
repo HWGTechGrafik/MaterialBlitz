@@ -1,29 +1,30 @@
 import { db, einstellungenLesen, einstellungenSchreiben } from '../db';
 import { SICHERUNG_ARTIKEL, SICHERUNG_TAGE, type Baustelle, type Kunde } from '../model';
 import { gehe, neu, zustand } from '../store';
-import { blatt, h, kopfKnopf, kopfRechts, marke, melden } from '../ui';
+import { blatt, h, ikon, kopfKnopf, kopfRechts, marke, melden } from '../ui';
 import { tageSeit } from '../lib/format';
 import { dateiWaehlen } from '../lib/share';
 import { scheinUebernehmen, sicherungEinspielen, vorschau } from '../lib/transfer';
+import {
+  durchsuchen, suchAktiv, suchBegriffe, zerlegen, type Fund, type FundArt,
+} from '../lib/suche';
+
+/**
+ * Der Suchbegriff bleibt stehen, bis er weggetippt wird — wer einen Fund
+ * antippt und mit dem Pfeil zurueckkommt, findet die uebrigen Funde noch vor.
+ */
+let suche = '';
 
 export async function uebersicht(): Promise<HTMLElement[]> {
-  const [alle, kunden] = await Promise.all([db.baustellen.toArray(), db.kunden.toArray()]);
-  const kundeVon = new Map(kunden.map((k) => [k.id!, k] as const));
+  const kopf = kopfBauen();
+  const rumpf = h('div', { class: 'rumpf' });
+  const zeile = suchzeile(rumpf);
+  await fuellen(rumpf);
+  return [kopf, zeile, rumpf];
+}
 
-  const offen = alle
-    .filter((b) => !b.abgeschlossen && !b.versteckt)
-    .sort((a, b) => b.zuletzt - a.zuletzt);
-
-  const zahlen = new Map<number, number>();
-  for (const b of offen) {
-    const scheine = await db.scheine.where('baustelleId').equals(b.id!).toArray();
-    const summe = scheine
-      .filter((s) => s.zustand === 'offen')
-      .reduce((n, s) => n + s.positionen.length, 0);
-    zahlen.set(b.id!, summe);
-  }
-
-  const kopf = h(
+function kopfBauen(): HTMLElement {
+  return h(
     'div',
     { class: 'kopf' },
     marke(),
@@ -41,14 +42,177 @@ export async function uebersicht(): Promise<HTMLElement[]> {
       kopfKnopf({ ikon: 'plus', titel: 'Neues Projekt', art: 'haupt', tun: () => baustelleAnlegen() }),
     ),
   );
+}
 
-  const liste = h('div', { class: 'rumpf' });
+// -------------------------------------------------------------- Suchzeile
+
+/**
+ * Ein Feld fuer alles. Es steht fest ueber der Liste — versteckt hinter einer
+ * Lupe wuerde es niemand suchen, der nicht weiss, dass es die Suche gibt.
+ */
+function suchzeile(rumpf: HTMLElement): HTMLElement {
+  const feld = h('input', {
+    type: 'search',
+    value: suche,
+    placeholder: 'Suchen — Projekt, Kunde, Material …',
+    'aria-label': 'Projekte, Scheine, Positionen und Katalog nach Stichwörtern durchsuchen',
+    autocomplete: 'off',
+    enterkeyhint: 'search',
+  });
+  // Rechtschreibhilfe auf Artikelnamen wie „NYM-J" ist nur im Weg.
+  feld.spellcheck = false;
+
+  const weg = h('button', {
+    class: 'suche-weg', type: 'button', html: '&times;',
+    'aria-label': 'Suche zurücksetzen',
+    hidden: !suche,
+  });
+
+  const setzen = (wert: string): void => {
+    suche = wert;
+    weg.hidden = !wert;
+    void fuellen(rumpf);
+  };
+
+  feld.addEventListener('input', () => setzen(feld.value));
+  feld.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Escape' || !feld.value) return;
+    ev.preventDefault();
+    feld.value = '';
+    setzen('');
+  });
+  weg.onclick = () => {
+    feld.value = '';
+    setzen('');
+    feld.focus();
+  };
+
+  return h('div', { class: 'suchzeile' }, ikon('lupe'), feld, weg);
+}
+
+/**
+ * Liste neu fuellen — **nur** den Rumpf, nicht den ganzen Bildschirm. Ein
+ * vollstaendiger Neuaufbau wuerde das Suchfeld mitsamt Schreibmarke ersetzen,
+ * und am Handy waere nach dem ersten Buchstaben die Tastatur wieder weg.
+ */
+let lauf = 0;
+async function fuellen(rumpf: HTMLElement): Promise<void> {
+  const meins = ++lauf;
+  const teile = suchAktiv(suche) ? await fundListe() : await projektListe();
+  // Ein neuerer Tastendruck ist schon unterwegs: dieses Ergebnis ist veraltet.
+  if (meins !== lauf) return;
+  rumpf.replaceChildren(...teile);
+  rumpf.scrollTop = 0;
+}
+
+// ------------------------------------------------------------ Trefferliste
+
+const ART_WORT: Record<FundArt, string> = {
+  projekt: 'Projekt',
+  schein: 'Schein',
+  position: 'Position',
+  artikel: 'Artikel',
+};
+
+/** Gefundene Woerter hervorheben — als Textknoten, nie als zusammengebautes HTML. */
+function markiert(text: string, begriffe: string[]): Node[] {
+  return zerlegen(text, begriffe).map((s) =>
+    s.treffer ? h('mark', { text: s.text }) : document.createTextNode(s.text),
+  );
+}
+
+function fundReihe(f: Fund, begriffe: string[]): HTMLElement {
+  return h(
+    'button',
+    {
+      class: 'reihe fund',
+      type: 'button',
+      onclick: () => {
+        if (f.baustelleId !== undefined) gehe('schein', f.baustelleId);
+        else gehe('katalog');
+      },
+    },
+    h(
+      'div',
+      { style: 'min-width:0' },
+      h('div', { class: 'haupt' }, ...markiert(f.titel, begriffe)),
+      h('div', { class: 'neben' }, ...markiert(f.unter, begriffe)),
+      ...f.treffer.map((t) =>
+        h('div', { class: 'warum' }, h('i', { text: t.feld }), ...markiert(t.zeig, begriffe)),
+      ),
+    ),
+    h('span', { class: 'plakette', text: ART_WORT[f.art] }),
+    h('span', { class: 'pfeil', html: '&rsaquo;' }),
+  );
+}
+
+async function fundListe(): Promise<HTMLElement[]> {
+  const begriffe = suchBegriffe(suche);
+  const gruppen = await durchsuchen(suche);
+  const anzahl = gruppen.reduce((n, g) => n + g.funde.length, 0);
+
+  const teile: HTMLElement[] = [
+    h(
+      'div',
+      { class: 'fund-zahl' },
+      h('b', { text: anzahl === 1 ? '1 Fund' : `${anzahl} Funde` }),
+      ` für „${suche.trim()}"`,
+    ),
+  ];
+
+  if (!anzahl) {
+    teile.push(
+      h('div', { class: 'leer', text:
+        'Nichts gefunden. Versuch es mit einem Wort weniger — gesucht wird in Projekten, Kunden, Scheinen, einzelnen Positionen und im Katalog.' }),
+    );
+    return teile;
+  }
+
+  for (const g of gruppen) {
+    // Ueberschrift weglassen, wenn die Gruppe nur aus dem Projekt selbst
+    // besteht — sie wuerde Wort fuer Wort dasselbe sagen wie die Zeile darunter.
+    const nurProjekt = g.funde.length === 1 && g.funde[0]!.art === 'projekt';
+    if (!nurProjekt) {
+      teile.push(
+        h(
+          'div',
+          { class: 'abschnitt' },
+          h('span', { text: g.titel }),
+          g.unter ? h('span', { class: 'neben', text: g.unter }) : null,
+        ),
+      );
+    }
+    for (const f of g.funde) teile.push(fundReihe(f, begriffe));
+  }
+  return teile;
+}
+
+// ------------------------------------------------------------ Projektliste
+
+async function projektListe(): Promise<HTMLElement[]> {
+  const [alle, kunden] = await Promise.all([db.baustellen.toArray(), db.kunden.toArray()]);
+  const kundeVon = new Map(kunden.map((k) => [k.id!, k] as const));
+
+  const offen = alle
+    .filter((b) => !b.abgeschlossen && !b.versteckt)
+    .sort((a, b) => b.zuletzt - a.zuletzt);
+
+  const zahlen = new Map<number, number>();
+  for (const b of offen) {
+    const scheine = await db.scheine.where('baustelleId').equals(b.id!).toArray();
+    const summe = scheine
+      .filter((s) => s.zustand === 'offen')
+      .reduce((n, s) => n + s.positionen.length, 0);
+    zahlen.set(b.id!, summe);
+  }
+
+  const teile: HTMLElement[] = [];
 
   const erinnerung = await sicherungFaellig();
-  if (erinnerung) liste.append(h('div', { class: 'polster' }, erinnerung));
+  if (erinnerung) teile.push(h('div', { class: 'polster' }, erinnerung));
 
   if (!offen.length) {
-    liste.append(
+    teile.push(
       h('div', { class: 'leer', text: 'Noch kein Projekt. Oben rechts mit dem Plus anlegen — danach tippst du es nur noch an.' }),
     );
   }
@@ -56,7 +220,7 @@ export async function uebersicht(): Promise<HTMLElement[]> {
   for (const b of offen) {
     const kunde = b.kundeId ? kundeVon.get(b.kundeId) : undefined;
     const anzahl = zahlen.get(b.id!) ?? 0;
-    liste.append(
+    teile.push(
       h(
         'button',
         { class: 'reihe', type: 'button', onclick: () => gehe('schein', b.id!) },
@@ -75,7 +239,7 @@ export async function uebersicht(): Promise<HTMLElement[]> {
     );
   }
 
-  return [kopf, liste];
+  return teile;
 }
 
 async function sicherungFaellig(): Promise<HTMLElement | null> {
