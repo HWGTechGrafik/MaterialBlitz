@@ -59,7 +59,7 @@ export function sperreView(): HTMLElement[] {
       meldung,
       knopf,
       h('p', { style: 'margin-top:14px;font-size:13px;color:var(--ink-muted)',
-        text: 'Den Schlüssel bekommst du von deinem Betrieb.' }),
+        text: 'Den Schlüssel bekommst du von dem, der dir die App gegeben hat.' }),
     ),
   );
 
