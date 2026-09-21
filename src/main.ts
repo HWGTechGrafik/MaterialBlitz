@@ -2,7 +2,7 @@ import './styles.css';
 import { registerSW } from 'virtual:pwa-register';
 import { einstellungenLesen } from './db';
 import { freigeschaltet, gehe, neu, zeichnerSetzen, zustand, type Ansicht } from './store';
-import { blatt, h } from './ui';
+import { blatt, h, ikon, type IkonName } from './ui';
 import { uebersicht } from './views/uebersicht';
 import { katalogView } from './views/katalog';
 import { einstellungenView } from './views/einstellungen';
@@ -11,10 +11,12 @@ import { sperreView } from './views/sperre';
 
 const wurzel = document.getElementById('app')!;
 
-const REITER: Array<{ ansicht: Ansicht; zeichen: string; text: string }> = [
-  { ansicht: 'uebersicht', zeichen: '🏗', text: 'Projekte' },
-  { ansicht: 'katalog', zeichen: '📋', text: 'Katalog' },
-  { ansicht: 'einstellungen', zeichen: '⚙', text: 'Einstellungen' },
+// Sinnbilder statt Emoji: die zeichnet jedes Handy anders, und neben den
+// Strichzeichnungen im Kopf sahen sie wie aus einer anderen App aus.
+const REITER: Array<{ ansicht: Ansicht; sinnbild: IkonName; text: string }> = [
+  { ansicht: 'uebersicht', sinnbild: 'raster', text: 'Dashboard' },
+  { ansicht: 'katalog', sinnbild: 'liste', text: 'Katalog' },
+  { ansicht: 'einstellungen', sinnbild: 'regler', text: 'Einstellungen' },
 ];
 
 function reiterleiste(): HTMLElement {
@@ -32,7 +34,7 @@ function reiterleiste(): HTMLElement {
             gehe(r.ansicht);
           },
         },
-        h('span', { class: 'zeichen', text: r.zeichen }),
+        ikon(r.sinnbild),
         h('span', { text: r.text }),
       ),
     ),

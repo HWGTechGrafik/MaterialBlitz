@@ -32,7 +32,7 @@ function kopfBauen(): HTMLElement {
       'div',
       { class: 'kopf-text' },
       h('div', { class: 'eyebrow', text: 'MaterialBlitz' }),
-      h('h1', { text: 'Projekte' }),
+      h('h1', { text: 'Dashboard' }),
     ),
     kopfRechts(
       null,

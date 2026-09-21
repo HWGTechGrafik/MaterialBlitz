@@ -135,6 +135,13 @@ const IKONEN = {
   liste: '<path d="M5 7h14"/><path d="M5 12h14"/><path d="M5 17h9"/>',
   lupe: '<circle cx="10.6" cy="10.6" r="6.4"/><path d="m15.4 15.4 4.2 4.2"/>',
   haus: '<path d="M4 20V8l8-4.5 8 4.5v12"/><path d="M3 20h18"/><path d="M10 20v-6h4v6"/>',
+  // Vier Felder: das Dashboard zeigt, was es zu tun gibt, nicht einen Ort.
+  raster:
+    '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/>' +
+    '<rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
+  regler:
+    '<path d="M4 8h9"/><circle cx="16" cy="8" r="2.3"/><path d="M18.3 8H20"/>' +
+    '<path d="M4 16h2.5"/><circle cx="9" cy="16" r="2.3"/><path d="M11.3 16H20"/>',
 } as const;
 
 export type IkonName = keyof typeof IKONEN;

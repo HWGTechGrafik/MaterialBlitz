@@ -63,7 +63,7 @@ function kopfBauen(baustelle: Baustelle, kunde: Kunde | undefined, schein: Schei
     'div',
     { class: 'kopf' },
     h('button', {
-      class: 'zurueck', type: 'button', 'aria-label': 'Zurück zu den Projekten',
+      class: 'zurueck', type: 'button', 'aria-label': 'Zurück zum Dashboard',
       html: '&lsaquo;',
       onclick: () => { scheinZuruecksetzen(); gehe('uebersicht'); },
     }),
