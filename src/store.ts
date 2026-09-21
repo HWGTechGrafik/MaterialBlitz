@@ -1,4 +1,5 @@
 import type { Einstellungen } from './model';
+import type { Lizenz } from './lib/lizenz';
 
 export type Ansicht = 'uebersicht' | 'schein' | 'katalog' | 'einstellungen' | 'sperre';
 
@@ -8,6 +9,8 @@ interface Zustand {
   /** Zuletzt geaenderte Position — wird kurz hervorgehoben. */
   frisch?: number;
   einstellungen?: Einstellungen;
+  /** Die **gepruefte** Lizenz. Gesetzt heisst: Unterschrift stimmt. */
+  lizenz?: Lizenz;
 }
 
 export const zustand: Zustand = { ansicht: 'uebersicht' };
@@ -32,9 +35,13 @@ export function gehe(ansicht: Ansicht, baustelleId?: number): void {
 
 /**
  * Ohne gueltigen Schluessel kommt die App gar nicht erst hoch — kein Anlegen,
- * kein Erfassen, nichts. Vor dem Sperrbildschirm liegt nur der
- * Schluesselgenerator, sonst kaeme der Betrieb nie an den ersten Schluessel.
+ * kein Erfassen, nichts.
+ *
+ * Gefragt wird nach der **geprueften** Lizenz, nicht nach dem gespeicherten
+ * Text: die Unterschrift wird beim Start einmal nachgerechnet (main.ts), und
+ * erst ihr Ergebnis schaltet frei. Ein von Hand in den Speicher geschriebener
+ * Schluessel reicht damit nicht mehr.
  */
 export function freigeschaltet(): boolean {
-  return Boolean(zustand.einstellungen?.lizenz);
+  return Boolean(zustand.lizenz);
 }

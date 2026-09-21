@@ -328,7 +328,17 @@ mark {
 }
 .feld input:focus, .feld select:focus { border-color: var(--ader); outline: none; }
 .feld input.gross { min-height: 58px; text-align: center; font-size: 21px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
-.feld input.falsch { border-color: var(--warn); }
+.feld input.falsch, .feld .schluessel.falsch { border-color: var(--warn); }
+/* Der Schluessel wird eingefuegt, nicht getippt: ein mehrzeiliges Feld,
+   damit man sieht, dass wirklich etwas drinsteht. */
+.feld .schluessel {
+  width: 100%; padding: 10px 12px; resize: none;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line); border-radius: var(--r);
+  font-family: ui-monospace, 'Consolas', monospace; font-size: 13px; line-height: 1.45;
+  word-break: break-all;
+}
+.feld .schluessel:focus { border-color: var(--ader); outline: none; }
 
 .merk {
   display: flex; gap: 8px; align-items: flex-start;

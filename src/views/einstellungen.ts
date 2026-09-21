@@ -3,6 +3,7 @@ import { EINHEITEN_STANDARD } from '../model';
 import { neu, zustand } from '../store';
 import { blatt, h, melden } from '../ui';
 import { datum } from '../lib/format';
+import { datumText } from '../lib/lizenz';
 
 import { teilen } from '../lib/share';
 import { sicherungPacken } from '../lib/transfer';
@@ -52,7 +53,7 @@ export async function einstellungenView(): Promise<HTMLElement[]> {
 
       await sicherungKarte(),
       einheitenKarte(e.einheiten),
-      lizenzKarte(e.lizenz),
+      lizenzKarte(),
     ),
   );
 
@@ -150,19 +151,32 @@ function einheitenKarte(einheiten: string[]): HTMLElement {
 // ---------------------------------------------------------------- Lizenz
 
 /**
- * Hier ist immer eine Lizenz eingetragen — ohne kommt man gar nicht so weit,
- * der Sperrbildschirm steht davor.
+ * Hier ist immer eine gueltige Lizenz eingetragen — ohne kommt man gar nicht
+ * so weit, der Sperrbildschirm steht davor.
+ *
+ * Gezeigt wird, **was im Schluessel steht**, nicht der Schluessel selbst: der
+ * ist ueber 150 Zeichen lang und sagt niemandem etwas. Auf wen die Lizenz
+ * ausgestellt ist, sagt dagegen genau das, was man wissen will.
  */
-function lizenzKarte(lizenz?: string): HTMLElement {
+function lizenzKarte(): HTMLElement {
+  const l = zustand.lizenz;
   return h('div', { class: 'karte' },
     h('h2', { text: 'Lizenz' }),
     h('div', { class: 'paar' },
-      h('span', { class: 'k', text: 'Status' }),
-      h('span', { class: 'v', style: 'color:var(--blitz)', text: 'Freigeschaltet' }),
+      h('span', { class: 'k', text: 'Ausgestellt für' }),
+      h('span', { class: 'v', style: 'color:var(--blitz)', text: l?.betrieb ?? '—' }),
     ),
     h('div', { class: 'paar' },
-      h('span', { class: 'k', text: 'Schlüssel' }),
-      h('span', { class: 'v', text: lizenz ?? '—' }),
+      h('span', { class: 'k', text: 'Lizenznummer' }),
+      h('span', { class: 'v', text: l ? `Nr. ${l.nummer}` : '—' }),
+    ),
+    h('div', { class: 'paar' },
+      h('span', { class: 'k', text: 'Ausgestellt am' }),
+      h('span', { class: 'v', text: l ? datumText(l.ausgestellt) : '—' }),
+    ),
+    h('div', { class: 'paar' },
+      h('span', { class: 'k', text: 'Laufzeit' }),
+      h('span', { class: 'v', text: l?.laeuftAb ? `bis ${datumText(l.laeuftAb)}` : 'unbefristet' }),
     ),
     h('button', {
       class: 'knopf gefahr', type: 'button', text: 'Lizenz von diesem Gerät entfernen',
@@ -177,6 +191,7 @@ function lizenzKarte(lizenz?: string): HTMLElement {
               text: 'Entfernen', art: 'gefahr',
               tun: async () => {
                 zustand.einstellungen = await einstellungenSchreiben({ lizenz: undefined });
+                zustand.lizenz = undefined;
                 neu();
               },
             },

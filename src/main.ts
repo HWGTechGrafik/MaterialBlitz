@@ -1,6 +1,7 @@
 import './styles.css';
 import { registerSW } from 'virtual:pwa-register';
 import { einstellungenLesen } from './db';
+import { pruefen } from './lib/lizenz';
 import { freigeschaltet, gehe, neu, zeichnerSetzen, zustand, type Ansicht } from './store';
 import { blatt, h, ikon, type IkonName } from './ui';
 import { uebersicht } from './views/uebersicht';
@@ -102,6 +103,14 @@ const aktualisieren = registerSW({
 
 async function start(): Promise<void> {
   zustand.einstellungen = await einstellungenLesen();
+  // Die Unterschrift wird **einmal** beim Start nachgerechnet. Sie zu pruefen
+  // ist asynchron; waere das bei jedem Neuaufbau noetig, flackerte bei jedem
+  // Tastendruck der Sperrbildschirm auf.
+  const gespeichert = zustand.einstellungen.lizenz;
+  if (gespeichert) {
+    const ergebnis = await pruefen(gespeichert);
+    if (ergebnis.ok) zustand.lizenz = ergebnis.lizenz;
+  }
   neu();
 }
 
