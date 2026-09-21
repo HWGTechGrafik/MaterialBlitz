@@ -47,6 +47,23 @@ function herunterladen(dateien: File[]): boolean {
   }
 }
 
+/**
+ * Text in die Zwischenablage legen. Liefert, ob es geklappt hat — der
+ * Zugriff wird nicht auf jedem Geraet gewaehrt, und dann soll der Aufrufer
+ * nichts versprechen, was nicht eingetreten ist.
+ *
+ * **Frueh aufrufen:** iOS gewaehrt den Zugriff nur im Druckpunkt des
+ * Nutzers; nach mehreren await dazwischen nicht mehr verlaesslich.
+ */
+export async function inZwischenablage(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Datei ueber einen Dateiauswahl-Dialog einlesen. */
 export function dateiWaehlen(): Promise<string | null> {
   return new Promise((fertig) => {

@@ -10,7 +10,7 @@ import { gehe, neu, zustand } from '../store';
 import { blatt, h, kopfKnopf, kopfRechts, langDruck, melden } from '../ui';
 import { datum, menge as mengeText, zahl, zeit } from '../lib/format';
 import { csvDatei } from '../lib/csv';
-import { teilen } from '../lib/share';
+import { inZwischenablage, teilen } from '../lib/share';
 import { scheinPacken } from '../lib/transfer';
 
 /** Welcher offene Schein gerade bearbeitet wird (eigener oder uebernommener). */
@@ -372,6 +372,14 @@ async function positionLoeschen(index: number): Promise<void> {
 // -------------------------------------------------------------- Abgeben
 
 async function senden(baustelle: Baustelle, kunde: Kunde | undefined, schein: Schein): Promise<void> {
+  // **Als Erstes**, noch im Druckpunkt: Der Teilen-Dialog kennt kein
+  // Empfaengerfeld — ein mailto koennte eines, traegt dafuer keine Anhaenge.
+  // Also legt die App die Adresse in die Zwischenablage, damit sie in der
+  // Mail nur noch einzusetzen ist. Nach dem Nachladen von jsPDF weiter unten
+  // gewaehrt iOS den Zugriff nicht mehr verlaesslich.
+  const buero = zustand.einstellungen?.buero?.trim();
+  if (buero) await inZwischenablage(buero);
+
   const e = await einstellungenLesen();
   const stand: Schein = { ...schein, beendet: Date.now() };
   // jsPDF ist der groesste Brocken und wird erst hier gebraucht. Nachladen

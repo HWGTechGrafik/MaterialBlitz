@@ -71,6 +71,12 @@ export interface Einstellungen {
   /** Feste Liste plus selbst ergaenzte. */
   einheiten: string[];
   lizenz?: string;
+  /**
+   * Adresse des Bueros. Steht **nicht** auf dem PDF — sie liegt beim Senden
+   * in der Zwischenablage, damit sie in der Mail nur noch einzusetzen ist.
+   * Der Teilen-Dialog kennt kein Empfaengerfeld, das ist der naechste Weg.
+   */
+  buero?: string;
   letzteSicherung?: number;
   /** Artikel seit der letzten Sicherung — loest die Erinnerung mit aus. */
   neueArtikel: number;

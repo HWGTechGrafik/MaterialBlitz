@@ -41,6 +41,22 @@ export async function einstellungenView(): Promise<HTMLElement[]> {
     melden('Gespeichert', 'Der Firmenkopf erscheint ab sofort auf jedem PDF.');
   };
 
+  const buero = feld('Adresse des Büros', e.buero ?? '', 'buero@elektro-muster.at');
+  buero.eingabe.type = 'email';
+  buero.eingabe.autocapitalize = 'off';
+  buero.eingabe.spellcheck = false;
+
+  const bueroSpeichern = async () => {
+    const adresse = buero.eingabe.value.trim();
+    zustand.einstellungen = await einstellungenSchreiben({ buero: adresse || undefined });
+    melden(
+      'Gespeichert',
+      adresse
+        ? 'Beim Senden liegt die Adresse in der Zwischenablage: in der Mail auf das An-Feld tippen, lange drücken, einsetzen.'
+        : 'Es wird keine Adresse mehr kopiert.',
+    );
+  };
+
   const rumpf = h('div', { class: 'rumpf' },
     h('div', { class: 'polster' },
 
@@ -49,6 +65,15 @@ export async function einstellungenView(): Promise<HTMLElement[]> {
         h('p', { text: 'Steht oben auf jedem PDF, das ins Büro geht.' }),
         name.knoten, strasse.knoten, ort.knoten, telefon.knoten,
         h('button', { class: 'knopf', type: 'button', text: 'Speichern', onclick: speichern }),
+      ),
+
+      // Eigene Karte, nicht beim Firmenkopf: Die Adresse steht **nicht** auf
+      // dem PDF, sie betrifft nur den Weg dorthin.
+      h('div', { class: 'karte' },
+        h('h2', { text: 'Ans Büro' }),
+        h('p', { text: 'Der Teilen-Dialog des Handys kennt kein Empfängerfeld — Anhänge und Adressfelder schließen einander aus. Darum legt die App die Adresse beim Senden in die Zwischenablage; in der Mail ist sie dann nur noch ins An-Feld einzusetzen. Ab der zweiten Mail schlägt das Handy sie ohnehin selbst vor.' }),
+        buero.knoten,
+        h('button', { class: 'knopf', type: 'button', text: 'Speichern', onclick: bueroSpeichern }),
       ),
 
       await sicherungKarte(),
