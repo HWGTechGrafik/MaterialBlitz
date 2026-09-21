@@ -1,8 +1,22 @@
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const leer = fileURLToPath(new URL('./src/lib/leer.ts', import.meta.url));
+
+// Fassung, Stand und Zeitpunkt beim Bauen einsetzen. Daran erkennt man am
+// Handy, ob ein Update wirklich angekommen ist — sonst bleibt nur Raten.
+const paket = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
+const stand = (() => {
+  try {
+    return execSync('git rev-parse --short HEAD').toString().trim();
+  } catch {
+    // Ohne Versionsverwaltung gebaut — kein Grund, den Bau abzubrechen.
+    return 'lokal';
+  }
+})();
 
 export default defineConfig({
   // Die Seite liegt auf GitHub Pages in einem Unterverzeichnis. Fehlt das hier,
@@ -18,6 +32,12 @@ export default defineConfig({
       canvg: leer,
       dompurify: leer,
     },
+  },
+
+  define: {
+    __FASSUNG__: JSON.stringify(paket.version),
+    __STAND__: JSON.stringify(stand),
+    __GEBAUT__: JSON.stringify(String(Date.now())),
   },
 
   build: {

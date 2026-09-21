@@ -4,6 +4,7 @@ import { neu, zustand } from '../store';
 import { blatt, h, melden } from '../ui';
 import { datum } from '../lib/format';
 import { datumText } from '../lib/lizenz';
+import { fassungsZeile } from '../lib/fassung';
 
 import { teilen } from '../lib/share';
 import { sicherungPacken } from '../lib/transfer';
@@ -79,6 +80,10 @@ export async function einstellungenView(): Promise<HTMLElement[]> {
       await sicherungKarte(),
       einheitenKarte(e.einheiten),
       lizenzKarte(),
+
+      // Ganz unten und leise: Man sucht sie nur, wenn man wissen will, ob
+      // ein Update angekommen ist — und dann findet man sie dort.
+      h('p', { class: 'fassung', text: fassungsZeile() }),
     ),
   );
 
