@@ -60,6 +60,12 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
         cleanupOutdatedCaches: true,
         navigateFallback: '/MaterialBlitz/index.html',
+        // Ohne diese Liste beantwortet der Service Worker **jede** Navigation
+        // unterhalb von /MaterialBlitz/ mit der App - auch eine eigene Seite,
+        // die danebenliegt. Die laege dann zwar auf dem Server, waere am
+        // Geraet aber nicht zu erreichen, und man suchte den Fehler im
+        // Deploy statt hier.
+        navigateFallbackDenylist: [/masse\.html$/],
       },
       devOptions: { enabled: false },
     }),
