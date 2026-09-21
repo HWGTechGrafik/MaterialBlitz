@@ -29,7 +29,7 @@
     <div class="rumpf"><table id="t"></table></div>
     <div class="fuss">Fuss — klebt das hier an der Unterkante?</div>
     <script>
-      const zeilen = [
+      const werte = () => [
         ['screen.height', screen.height],
         ['innerHeight', innerHeight],
         ['visualViewport', Math.round(visualViewport.height)],
@@ -41,6 +41,7 @@
         ['inset-bottom', mess('env(safe-area-inset-bottom, 0px)')],
         ['devicePixelRatio', devicePixelRatio],
         ['standalone', navigator.standalone === true ? 'ja' : 'nein (Browser!)'],
+        ['Fuss-Unterkante', Math.round(document.querySelector('.fuss').getBoundingClientRect().bottom)],
       ];
       function mess(wert) {
         const p = document.createElement('div');
@@ -50,9 +51,17 @@
         p.remove();
         return h;
       }
-      document.getElementById('t').innerHTML = zeilen
-        .map(([k, v]) => '<tr><td>' + k + '</td><td>' + v + '</td></tr>')
-        .join('');
+      function zeichnen() {
+        document.getElementById('t').innerHTML = werte()
+          .map(([k, v]) => '<tr><td>' + k + '</td><td>' + v + '</td></tr>')
+          .join('');
+      }
+      zeichnen();
+      // **Noch einmal, wenn alles steht.** Beim ersten Durchlauf hatte iOS die
+      // Ansicht noch nicht auf den vollen Schirm ausgedehnt: alle drei
+      // Hoeheneinheiten gleich und beide Insets null - das sind zu frueh
+      // abgelesene Zahlen, nicht die Wirklichkeit.
+      addEventListener('load', () => setTimeout(zeichnen, 400));
     </script>
   </body>
 </html>

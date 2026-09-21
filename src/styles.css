@@ -62,15 +62,16 @@ button, input, select, textarea { font: inherit; color: inherit; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
 /* Die Flaeche zwischen den Leisten bleibt grau — auch die Raender neben dem
-   Schirm auf breiten Bildschirmen. */
-#app { height: 100%; background: var(--ground); }
+   Schirm auf breiten Bildschirmen.
 
-/* 100% loest auf iOS zur *kleinen* Ansichtshoehe auf: das Dokument blieb rund
-   30 Punkte kuerzer als der Schirm, und dieser Rest fiel niemandem zu.
-   dvh nimmt die tatsaechliche Hoehe — die Liste bekommt sie. */
-@supports (height: 100dvh) {
-  html, body, #app { height: 100dvh; }
-}
+   **An die vier Kanten genagelt, nicht in Hoehen gerechnet.** Erst stand hier
+   100%, dann 100dvh — beide loesten am iPhone im Home-Bildschirm-Modus zur
+   Hoehe *ohne* Statusleiste auf: 793 statt 852 Punkte. Gezeichnet wurde
+   trotzdem ab der Oberkante, also blieben unten 59 Punkte uebrig, die
+   niemandem zufielen. Die Reiterleiste schwebte darueber.
+   Gemessen am Geraet mit masse.html: eine Spalte direkt auf dem Dokument
+   reicht von der Statusleiste bis an den Home-Balken. inset ist genau das. */
+#app { position: fixed; inset: 0; background: var(--ground); }
 
 .schirm {
   max-width: 520px;
