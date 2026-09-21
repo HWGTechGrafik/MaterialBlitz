@@ -62,16 +62,31 @@ button, input, select, textarea { font: inherit; color: inherit; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
 /* Die Flaeche zwischen den Leisten bleibt grau — auch die Raender neben dem
-   Schirm auf breiten Bildschirmen.
+   Schirm auf breiten Bildschirmen. */
+#app { height: 100%; background: var(--ground); }
 
-   **An die vier Kanten genagelt, nicht in Hoehen gerechnet.** Erst stand hier
-   100%, dann 100dvh — beide loesten am iPhone im Home-Bildschirm-Modus zur
-   Hoehe *ohne* Statusleiste auf: 793 statt 852 Punkte. Gezeichnet wurde
-   trotzdem ab der Oberkante, also blieben unten 59 Punkte uebrig, die
-   niemandem zufielen. Die Reiterleiste schwebte darueber.
-   Gemessen am Geraet mit masse.html: eine Spalte direkt auf dem Dokument
-   reicht von der Statusleiste bis an den Home-Balken. inset ist genau das. */
-#app { position: fixed; inset: 0; background: var(--ground); }
+/* **Am Geraet gemessen (masse.html), und es ist eine Falle mit drei Boeden:**
+   Am iPhone ist die Ansicht im Home-Bildschirm-Modus beim Laden 852 Punkte
+   hoch und wird danach von iOS um die Statusleiste eingezogen — auf 793.
+   Gezeichnet wird trotzdem ab der Oberkante, also fallen unten 59 Punkte
+   niemandem zu.
+
+   dvh und svh meinen beide diese *eingezogene* Hoehe, 100% ebenso, und
+   position:fixed haengt am selben Rahmen. Nur **lvh** meint den ganzen
+   Schirm. Zusammen mit den Sicherheitsabstaenden (oben 59, unten 34) sitzt
+   damit alles richtig: der Kopf unter der Statusleiste, die Reiterleiste
+   ueber dem Home-Balken.
+
+   Im Browser bleibt es bei dvh: dort *soll* die Hoehe der ein- und
+   ausfahrenden Adressleiste folgen. */
+@supports (height: 100dvh) {
+  html, body, #app { height: 100dvh; }
+}
+@media (display-mode: standalone) {
+  @supports (height: 100lvh) {
+    html, body, #app { height: 100lvh; }
+  }
+}
 
 .schirm {
   max-width: 520px;
