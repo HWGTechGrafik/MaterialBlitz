@@ -92,6 +92,9 @@
         'Home-Bildschirm': standalone ? 'ja' : 'nein (Browser!)',
         'BarcodeDetector eingebaut': 'BarcodeDetector' in window ? 'ja' : 'nein',
         'Skript geladen': '–',
+        'WebAssembly': '–',
+        'wasm geladen': '–',
+        'wasm übersetzt': '–',
         'zxing bereit': '–',
         'Auflösung': '–',
         'Fähigkeiten': '–',
@@ -118,8 +121,38 @@
           document.head.append(s);
         }).then(async (api) => {
           geraet['Skript geladen'] = ms(performance.now() - t);
-          const t2 = performance.now();
-          await api.prepareZXingModule({ fireImmediately: true });
+          // Den wasm-Teil selbst holen und uebersetzen, statt es zxing zu
+          // ueberlassen: dessen Meldung ("both async and sync fetching of the
+          // wasm failed") sagt nicht, ob das Laden oder das Ausfuehren
+          // scheiterte. Am iPhone kam genau diese Meldung.
+          if (typeof WebAssembly !== 'object') {
+            geraet['WebAssembly'] = 'fehlt (Blockierungsmodus?)';
+            throw new Error('WebAssembly fehlt');
+          }
+          geraet['WebAssembly'] = 'vorhanden';
+          const url = 'https://cdn.jsdelivr.net/npm/zxing-wasm@' + api.ZXING_WASM_VERSION + '/dist/reader/zxing_reader.wasm';
+          let t2 = performance.now();
+          let bytes;
+          try {
+            const r = await fetch(url);
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            bytes = await r.arrayBuffer();
+          } catch (e) {
+            geraet['wasm geladen'] = 'Fehler: ' + e.name + ': ' + e.message;
+            throw new Error('wasm nicht geladen: ' + e.message);
+          }
+          geraet['wasm geladen'] = ms(performance.now() - t2) + ', ' + Math.round(bytes.byteLength / 1024) + ' KB';
+          t2 = performance.now();
+          try {
+            await WebAssembly.compile(bytes);
+          } catch (e) {
+            geraet['wasm übersetzt'] = 'Fehler: ' + e.name + ': ' + e.message;
+            throw new Error('wasm nicht übersetzt: ' + e.message);
+          }
+          geraet['wasm übersetzt'] = ms(performance.now() - t2);
+          zeichnen();
+          t2 = performance.now();
+          await api.prepareZXingModule({ overrides: { wasmBinary: bytes }, fireImmediately: true });
           geraet['zxing bereit'] = ms(performance.now() - t2) + ' (zxing ' + api.ZXING_WASM_VERSION + ')';
           zeichnen();
           return new api.BarcodeDetector({ formats: FORMATE });
