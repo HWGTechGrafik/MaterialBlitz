@@ -85,7 +85,7 @@ export default defineConfig({
         // die danebenliegt. Die laege dann zwar auf dem Server, waere am
         // Geraet aber nicht zu erreichen, und man suchte den Fehler im
         // Deploy statt hier.
-        navigateFallbackDenylist: [/masse\.html$/],
+        navigateFallbackDenylist: [/masse\.html$/, /scan\.html$/],
       },
       devOptions: { enabled: false },
     }),

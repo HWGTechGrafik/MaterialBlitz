@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <!-- Dieselben Angaben wie die App, sonst misst die Seite etwas anderes. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Scan" />
+    <title>Scan</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0; background: #14202e; color: #e6edf5;
+        font: 15px/1.5 'Segoe UI', system-ui, sans-serif;
+      }
+      .kopf { padding: 10px 16px; padding-top: calc(10px + env(safe-area-inset-top, 0px)); background: #1c4f8a; font-weight: 700; }
+      .rumpf { padding: 12px 16px; padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
+      .hinweis { margin: 0 0 10px; color: #9fb3c8; font-size: 13px; }
+      .bild { position: relative; width: 100%; aspect-ratio: 4 / 3; background: #000; border-radius: 12px; overflow: hidden; }
+      video { width: 100%; height: 100%; object-fit: cover; display: block; }
+      /* Nur dieser Ausschnitt wird ausgewertet - wie spaeter in der App. */
+      .ziel { position: absolute; left: 8%; right: 8%; top: 22%; bottom: 22%; border: 2px solid #f0a33c; border-radius: 8px; box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.35); }
+      .blitz { position: absolute; inset: 0; background: #3ccf6e; opacity: 0; transition: opacity 0.4s; pointer-events: none; }
+      .blitz.an { opacity: 0.45; transition: none; }
+      .knoepfe { display: flex; gap: 8px; margin: 12px 0; }
+      button {
+        flex: 1; min-height: 52px; border: 0; border-radius: 10px;
+        background: #2a3949; color: #e6edf5; font: inherit; font-weight: 700;
+      }
+      button.haupt { background: #b4560e; }
+      button:disabled { opacity: 0.4; }
+      h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: #9fb3c8; margin: 18px 0 4px; }
+      table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+      td { padding: 3px 0; border-bottom: 1px solid #2a3949; vertical-align: top; }
+      td:first-child { white-space: nowrap; }
+      td:last-child { text-align: right; font-weight: 700; padding-left: 12px; word-break: break-all; }
+      textarea { width: 100%; box-sizing: border-box; height: 160px; background: #0d1620; color: inherit; border: 1px solid #2a3949; border-radius: 8px; font: 12px/1.4 ui-monospace, monospace; }
+    </style>
+  </head>
+  <body>
+    <div class="kopf">Scan-Probe</div>
+    <div class="rumpf">
+      <p class="hinweis">
+        Gemessen wird ab dem Tippen auf „Kamera starten“. Für den reinen Technikwert
+        den Code schon vorher ins Bild halten, für den Alltagswert erst danach.
+      </p>
+      <div class="bild">
+        <video id="v" playsinline muted></video>
+        <div class="ziel" id="ziel"></div>
+        <div class="blitz" id="blitz"></div>
+      </div>
+      <div class="knoepfe">
+        <button id="start" class="haupt">Kamera starten</button>
+        <button id="licht" hidden>Licht</button>
+        <button id="stopp" disabled>Stopp</button>
+      </div>
+
+      <h2>Dieser Durchlauf</h2>
+      <table id="lauf"></table>
+      <h2>Gelesene Codes</h2>
+      <table id="codes"></table>
+      <h2>Gerät</h2>
+      <table id="geraet"></table>
+      <h2>Frühere Starts</h2>
+      <table id="verlauf"></table>
+
+      <div class="knoepfe">
+        <button id="kopieren">Ergebnis kopieren</button>
+        <button id="loeschen">Verlauf löschen</button>
+      </div>
+      <textarea id="bericht" hidden readonly></textarea>
+    </div>
+
+    <script>
+      // Dieselbe Bibliothek, die spaeter in die App kaeme: ein Nachbau der
+      // BarcodeDetector-Schnittstelle, die Safari nicht mitbringt, auf zxing.
+      // Fuer die Probe vom CDN - in der App laege sie im Precache.
+      const BIBLIOTHEK = 'https://cdn.jsdelivr.net/npm/barcode-detector@3.2.2/dist/iife/ponyfill.js';
+      const FORMATE = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'itf', 'qr_code', 'data_matrix'];
+      const NAMEN = {
+        ean_13: 'EAN-13', ean_8: 'EAN-8', upc_a: 'UPC-A', upc_e: 'UPC-E', code_128: 'Code 128',
+        code_39: 'Code 39', itf: 'ITF', qr_code: 'QR', data_matrix: 'DataMatrix',
+      };
+      const SPEICHER = 'scan-probe-verlauf';
+
+      const $ = (id) => document.getElementById(id);
+      const ms = (t) => (t == null ? '–' : Math.round(t) + ' ms');
+      const standalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+
+      const geraet = {
+        'Home-Bildschirm': standalone ? 'ja' : 'nein (Browser!)',
+        'BarcodeDetector eingebaut': 'BarcodeDetector' in window ? 'ja' : 'nein',
+        'Skript geladen': '–',
+        'zxing bereit': '–',
+        'Auflösung': '–',
+        'Fähigkeiten': '–',
+        'System': navigator.userAgent.replace(/^Mozilla\/5\.0 /, ''),
+      };
+
+      let verlauf = [];
+      try { verlauf = JSON.parse(localStorage.getItem(SPEICHER) || '[]'); } catch { verlauf = []; }
+      function speichern() {
+        try { localStorage.setItem(SPEICHER, JSON.stringify(verlauf.slice(0, 30))); } catch { /* privat - egal */ }
+      }
+
+      // --- Bibliothek: erst beim ersten Start, parallel zur Kamera ---------
+      // So misst die Probe den kalten Weg: erster Scan nach App-Start.
+      let bibliothek = null;
+      function ladeBibliothek() {
+        if (bibliothek) return bibliothek;
+        const t = performance.now();
+        bibliothek = new Promise((ok, fehl) => {
+          const s = document.createElement('script');
+          s.src = BIBLIOTHEK;
+          s.onload = () => ok(window.BarcodeDetectionAPI);
+          s.onerror = () => fehl(new Error('Bibliothek nicht geladen – offline?'));
+          document.head.append(s);
+        }).then(async (api) => {
+          geraet['Skript geladen'] = ms(performance.now() - t);
+          const t2 = performance.now();
+          await api.prepareZXingModule({ fireImmediately: true });
+          geraet['zxing bereit'] = ms(performance.now() - t2) + ' (zxing ' + api.ZXING_WASM_VERSION + ')';
+          zeichnen();
+          return new api.BarcodeDetector({ formats: FORMATE });
+        });
+        bibliothek.catch((e) => { geraet['zxing bereit'] = 'Fehler: ' + e.message; bibliothek = null; zeichnen(); });
+        return bibliothek;
+      }
+
+      async function erlaubnis() {
+        try { return (await navigator.permissions.query({ name: 'camera' })).state; } catch { return 'unbekannt'; }
+      }
+
+      // --- Durchlauf -------------------------------------------------------
+      let lauf = null;
+      let eintrag = null;
+      let strom = null;
+      let aktiv = false;
+      const codes = new Map();
+
+      async function starten() {
+        if (aktiv || lauf?.laeuft) return;
+        const t = performance.now();
+        lauf = { beginn: t, laeuft: true, erlaubnis: '…', kamera: null, bild: null, bibliothek: null, erster: null, bilder: 0, summe: 0, fehler: '' };
+        eintrag = { zeit: new Date().toISOString(), standalone, erlaubnis: '…', kamera: null, erster: null };
+        verlauf.unshift(eintrag);
+        $('start').disabled = true;
+        zeichnen();
+
+        // Abfrage und Kamera gleichzeitig: die Abfrage liest den Stand, bevor
+        // eine Rueckfrage beantwortet ist.
+        erlaubnis().then((e) => { lauf.erlaubnis = eintrag.erlaubnis = e; zeichnen(); });
+        const detektor = ladeBibliothek().then((d) => { lauf.bibliothek = performance.now() - t; zeichnen(); return d; });
+        detektor.catch(() => {});
+
+        try {
+          strom = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+          });
+        } catch (e) {
+          lauf.fehler = eintrag.fehler = e.name + ': ' + e.message;
+          lauf.laeuft = false;
+          $('start').disabled = false;
+          speichern(); zeichnen();
+          return;
+        }
+        lauf.kamera = eintrag.kamera = Math.round(performance.now() - t);
+        speichern();
+
+        const v = $('v');
+        v.srcObject = strom;
+        await v.play().catch(() => {});
+        if (v.readyState < 2) await new Promise((r) => v.addEventListener('loadeddata', r, { once: true }));
+        lauf.bild = performance.now() - t;
+
+        const spur = strom.getVideoTracks()[0];
+        const s = spur.getSettings();
+        const f = spur.getCapabilities ? spur.getCapabilities() : {};
+        geraet['Auflösung'] = s.width + '×' + s.height;
+        geraet['Fähigkeiten'] = Object.keys(f).join(', ') || '–';
+        $('licht').hidden = !f.torch;
+        aktiv = true;
+        $('stopp').disabled = false;
+        zeichnen();
+
+        try {
+          schleife(await detektor);
+        } catch (e) {
+          lauf.fehler = e.message;
+          zeichnen();
+        }
+      }
+
+      function stoppen() {
+        aktiv = false;
+        if (lauf) lauf.laeuft = false;
+        strom?.getTracks().forEach((s) => s.stop());
+        strom = null;
+        $('v').srcObject = null;
+        licht = false;
+        $('licht').textContent = 'Licht';
+        $('start').disabled = false;
+        $('stopp').disabled = true;
+        zeichnen();
+      }
+
+      // --- Auswertung: nur der Zielrahmen, Bild fuer Bild ------------------
+      const leinwand = document.createElement('canvas');
+      const pinsel = leinwand.getContext('2d', { willReadFrequently: true });
+
+      async function schleife(detektor) {
+        const v = $('v');
+        while (aktiv) {
+          const a = ausschnitt(v);
+          if (a) {
+            leinwand.width = a.w;
+            leinwand.height = a.h;
+            pinsel.drawImage(v, a.x, a.y, a.w, a.h, 0, 0, a.w, a.h);
+            const t = performance.now();
+            let funde = [];
+            try { funde = await detektor.detect(leinwand); } catch (e) { lauf.fehler = e.message; }
+            lauf.summe += performance.now() - t;
+            lauf.bilder++;
+            for (const f of funde) treffer(f);
+            if (lauf.bilder % 10 === 0) zeichnen();
+          }
+          await naechstesBild(v);
+        }
+      }
+
+      function naechstesBild(v) {
+        return new Promise((r) => (v.requestVideoFrameCallback ? v.requestVideoFrameCallback(() => r()) : requestAnimationFrame(() => r())));
+      }
+
+      /** Den Zielrahmen in Kamera-Pixel umrechnen (Video mit object-fit: cover). */
+      function ausschnitt(v) {
+        const vw = v.videoWidth, vh = v.videoHeight;
+        if (!vw || !vh) return null;
+        const el = v.getBoundingClientRect();
+        const z = $('ziel').getBoundingClientRect();
+        const m = Math.max(el.width / vw, el.height / vh);
+        const ox = (vw * m - el.width) / 2;
+        const oy = (vh * m - el.height) / 2;
+        const x = Math.max(0, Math.round((z.left - el.left + ox) / m));
+        const y = Math.max(0, Math.round((z.top - el.top + oy) / m));
+        const w = Math.min(vw - x, Math.round(z.width / m));
+        const h = Math.min(vh - y, Math.round(z.height / m));
+        return w > 0 && h > 0 ? { x, y, w, h } : null;
+      }
+
+      function treffer(f) {
+        const k = f.format + '|' + f.rawValue;
+        let c = codes.get(k);
+        if (!c) {
+          c = { format: f.format, wert: f.rawValue, anzahl: 0, nach: performance.now() - lauf.beginn };
+          codes.set(k, c);
+          aufblitzen();
+          if (lauf.erster == null) {
+            lauf.erster = c.nach;
+            eintrag.erster = Math.round(c.nach);
+            speichern();
+          }
+        }
+        c.anzahl++;
+      }
+
+      function aufblitzen() {
+        const b = $('blitz');
+        b.classList.add('an');
+        requestAnimationFrame(() => requestAnimationFrame(() => b.classList.remove('an')));
+      }
+
+      // --- Licht -----------------------------------------------------------
+      let licht = false;
+      async function lichtSchalten() {
+        const spur = strom?.getVideoTracks()[0];
+        if (!spur) return;
+        try {
+          await spur.applyConstraints({ advanced: [{ torch: !licht }] });
+          licht = !licht;
+          $('licht').textContent = licht ? 'Licht aus' : 'Licht';
+        } catch (e) {
+          lauf.fehler = 'Licht: ' + e.message;
+          zeichnen();
+        }
+      }
+
+      // --- Anzeige ---------------------------------------------------------
+      function tabelle(id, zeilen) {
+        $(id).innerHTML = zeilen.length
+          ? zeilen.map(([k, w]) => '<tr><td>' + esc(k) + '</td><td>' + esc(w) + '</td></tr>').join('')
+          : '<tr><td>–</td><td></td></tr>';
+      }
+      function esc(s) {
+        return String(s).replace(/[&<>"]/g, (z) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[z]);
+      }
+
+      function laufZeilen() {
+        if (!lauf) return [];
+        return [
+          ['Erlaubnis vorher', lauf.erlaubnis],
+          ['Kamera freigegeben', ms(lauf.kamera)],
+          ['Erstes Bild', ms(lauf.bild)],
+          ['Leser bereit', ms(lauf.bibliothek)],
+          ['Erster Code', ms(lauf.erster)],
+          ['Bilder ausgewertet', lauf.bilder],
+          ['Ø je Bild', lauf.bilder ? ms(lauf.summe / lauf.bilder) : '–'],
+          ...(lauf.fehler ? [['Fehler', lauf.fehler]] : []),
+        ];
+      }
+      function codeZeilen() {
+        return [...codes.values()].reverse().map((c) => [NAMEN[c.format] || c.format, c.wert + '  (' + c.anzahl + '×, ' + ms(c.nach) + ')']);
+      }
+      function verlaufZeilen() {
+        return verlauf.map((e) => [
+          new Date(e.zeit).toLocaleString('de-AT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) +
+            (e.standalone ? '' : ' (Browser)'),
+          e.erlaubnis + ' · Kamera ' + ms(e.kamera) + ' · Code ' + ms(e.erster) + (e.fehler ? ' · ' + e.fehler : ''),
+        ]);
+      }
+
+      function zeichnen() {
+        tabelle('lauf', laufZeilen());
+        tabelle('codes', codeZeilen());
+        tabelle('geraet', Object.entries(geraet));
+        tabelle('verlauf', verlaufZeilen());
+      }
+
+      function bericht() {
+        const block = (titel, zeilen) => titel + '\n' + (zeilen.length ? zeilen.map(([k, w]) => '  ' + k + ': ' + w).join('\n') : '  –');
+        return [
+          'Scan-Probe ' + new Date().toLocaleString('de-AT'),
+          block('Dieser Durchlauf', laufZeilen()),
+          block('Gelesene Codes', codeZeilen()),
+          block('Gerät', Object.entries(geraet)),
+          block('Frühere Starts', verlaufZeilen()),
+        ].join('\n\n');
+      }
+
+      async function kopieren() {
+        const text = bericht();
+        try {
+          await navigator.clipboard.writeText(text);
+          $('kopieren').textContent = 'Kopiert ✓';
+          setTimeout(() => ($('kopieren').textContent = 'Ergebnis kopieren'), 1500);
+        } catch {
+          // Ohne Zwischenablage: zum Markieren hinlegen.
+          const f = $('bericht');
+          f.hidden = false;
+          f.value = text;
+          f.select();
+        }
+      }
+
+      $('start').addEventListener('click', starten);
+      $('stopp').addEventListener('click', stoppen);
+      $('licht').addEventListener('click', lichtSchalten);
+      $('kopieren').addEventListener('click', kopieren);
+      $('loeschen').addEventListener('click', () => { verlauf = []; speichern(); zeichnen(); });
+      // iOS nimmt die Kamera beim Wegwechseln ohnehin weg - sauber beenden.
+      document.addEventListener('visibilitychange', () => { if (document.hidden && aktiv) stoppen(); });
+      zeichnen();
+    </script>
+  </body>
+</html>
