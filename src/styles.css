@@ -387,6 +387,43 @@ mark {
 .code-hinweis.falsch { color: var(--warn); }
 .code-taten { display: flex; flex-wrap: wrap; justify-content: space-between; }
 
+/* Scannen ueber "Anderes Material suchen" im Schein. Untereinander, nicht
+   nebeneinander: daneben braeche der Suchknopf am Handy in zwei Zeilen. */
+.such-reihe { display: flex; flex-direction: column; gap: 8px; padding: 0 16px 14px; }
+.such-reihe .scan-knopf { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.scan-knopf .ikon { width: 22px; height: 22px; }
+
+/* Scanner: Vollbild mit Kamera. Im Home-Bildschirm-Modus 100lvh statt
+   inset: sonst bleiben unten 59 Punkte App sichtbar (siehe oben). */
+.scanner { position: fixed; inset: 0; z-index: 100; background: #000; }
+@media (display-mode: standalone) {
+  @supports (height: 100lvh) { .scanner { bottom: auto; height: 100lvh; } }
+}
+.scanner video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* Nur dieser Rahmen wird ausgewertet. Breit genug fuer einen Strichcode,
+   hoch genug fuer einen QR. */
+.scanner-ziel {
+  position: absolute; left: 8%; right: 8%; top: 28%; height: 26%;
+  border: 3px solid #f0a33c; border-radius: 14px;
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.45);
+}
+.scanner-unten {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  display: flex; flex-direction: column; gap: 12px;
+}
+.scanner-status { color: #fff; text-align: center; font-size: 16px; font-weight: 600; text-shadow: 0 1px 3px #000; }
+.scanner-status.fehler {
+  background: rgba(0, 0, 0, 0.75); padding: 12px 14px; border-radius: var(--r);
+  font-weight: 500; line-height: 1.45; text-align: left;
+}
+.scanner-knoepfe { display: flex; gap: 10px; }
+.scanner-knopf {
+  flex: 1; min-height: var(--tap); border: 0; border-radius: var(--r);
+  background: rgba(255, 255, 255, 0.2); color: #fff; font-size: 17px; font-weight: 600;
+}
+.scanner-knopf.an { background: #f0a33c; color: #000; }
+
 .etiketten-liste { max-height: 40vh; overflow-y: auto; border-top: 1px solid var(--line); }
 .etikett-zeile { display: flex; align-items: center; gap: 12px; min-height: 50px; border-bottom: 1px solid var(--line); }
 .etikett-zeile input { width: 22px; height: 22px; flex: none; accent-color: var(--ader); }

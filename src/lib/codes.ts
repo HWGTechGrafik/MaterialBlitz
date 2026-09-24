@@ -4,9 +4,12 @@
  * die Hintertuer doch da (spec §2, §5.6).
  */
 
-/** Wie ein Code gespeichert und verglichen wird: ohne Leerzeichen, gross. */
+/**
+ * Wie ein Code gespeichert und verglichen wird: ohne Leerzeichen und
+ * Steuerzeichen (GS1-Codes tragen welche), gross.
+ */
 export function codeNormalisieren(roh: string): string {
-  return roh.replace(/\s+/g, '').toUpperCase();
+  return roh.replace(/[\s\x00-\x1f\x7f]+/g, '').toUpperCase();
 }
 
 // Ohne 0/O und 1/I: abgetippt verwechselt man sie.
@@ -73,4 +76,12 @@ export function codePruefen(roh: string): { code: string } | { fehler: string } 
  */
 export function qrInhalt(code: string, name: string, einheit: string): string {
   return ['MB1', code, name, einheit].join('|');
+}
+
+/** Gegenstueck zu `qrInhalt` — null, wenn es kein eigenes Etikett ist. */
+export function qrLesen(text: string): { code: string; name: string; einheit: string } | null {
+  const teile = text.split('|');
+  if (teile[0] !== 'MB1' || teile.length < 4) return null;
+  // Ein "|" im Namen ist unwahrscheinlich, aber so bleibt er heil.
+  return { code: codeNormalisieren(teile[1]!), name: teile.slice(2, -1).join('|'), einheit: teile.at(-1)! };
 }

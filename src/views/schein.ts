@@ -1,13 +1,14 @@
 import {
-  artikelVerwenden, db, einstellungenLesen, kacheln, offenerSchein,
+  artikelMitCode, artikelVerwenden, db, einstellungenLesen, kacheln, offenerSchein,
   scheineDerBaustelle, speicherSichern, suchen,
 } from '../db';
 import {
   istZaehlbar, positionHinzufuegen, runden,
-  type Baustelle, type Kunde, type Position, type Schein,
+  type Artikel, type Baustelle, type Kunde, type Position, type Schein,
 } from '../model';
 import { gehe, neu, zustand } from '../store';
-import { blatt, h, kopfKnopf, kopfRechts, langDruck, melden } from '../ui';
+import { blatt, h, ikon, kopfKnopf, kopfRechts, langDruck, melden } from '../ui';
+import { codeNormalisieren, qrLesen } from '../lib/codes';
 import { datum, menge as mengeText, zahl, zeit } from '../lib/format';
 import { csvDatei } from '../lib/csv';
 import { inZwischenablage, teilen } from '../lib/share';
@@ -174,7 +175,11 @@ async function rumpfBauen(
   }
 
   rumpf.append(
-    h('div', { style: 'padding:0 16px 14px' },
+    h('div', { class: 'such-reihe' },
+      h('button', {
+        class: 'knopf zweit scan-knopf', type: 'button', 'aria-label': 'Code scannen',
+        onclick: () => void scannenUndWaehlen(baustelle),
+      }, ikon('strichcode'), 'Code scannen'),
       h('button', {
         class: 'knopf zweit', type: 'button', text: 'Anderes Material suchen…',
         onclick: () => { sucheOffen = true; block = null; neu(); },
@@ -310,6 +315,106 @@ async function suchfeld(baustelle: Baustelle): Promise<HTMLElement> {
   );
   setTimeout(() => eingabe.focus(), 60);
   return kasten;
+}
+
+// ---------------------------------------------------------------- Scannen
+
+/**
+ * Scannen fuehrt an dieselbe Stelle wie eine Kachel: Artikel gewaehlt, nur
+ * noch die Menge fehlt. Ein unbekannter Code wird einmal zugeordnet und ist
+ * ab dann bekannt.
+ */
+async function scannenUndWaehlen(baustelle: Baustelle): Promise<void> {
+  const { scannen } = await import('../lib/scanner');
+  const text = await scannen();
+  if (!text) return;
+
+  const etikett = qrLesen(text);
+  const code = etikett ? etikett.code : codeNormalisieren(text);
+  let artikel = await artikelMitCode(code);
+
+  // Etikett eines Kollegen: der Code ist hier neu, Name und Einheit reisen
+  // aber mit. Ueber den Namen finden oder anlegen, den Code dranhaengen.
+  if (!artikel && etikett) {
+    artikel = await db.artikel.where('name').equals(etikett.name).first();
+    if (artikel) {
+      await db.artikel.update(artikel.id!, { codes: [...(artikel.codes ?? []), code] });
+    } else {
+      await db.artikel.add({ name: etikett.name, einheit: etikett.einheit, anzahl: 0, codes: [code] });
+      artikel = { name: etikett.name, einheit: etikett.einheit, anzahl: 0 };
+    }
+  }
+
+  if (artikel) {
+    sucheOffen = false;
+    block = { name: artikel.name, einheit: artikel.einheit };
+    neu();
+    return;
+  }
+  await codeZuordnen(code, baustelle);
+}
+
+/** Ein unbekannter Code: welcher Artikel ist das? */
+async function codeZuordnen(code: string, baustelle: Baustelle): Promise<void> {
+  const e = await einstellungenLesen();
+  const treffer = h('div', { class: 'treffer' });
+  const feld = h('input', { type: 'text', placeholder: 'Artikel suchen oder neu benennen', autocomplete: 'off' });
+  const einheit = h('select', {}, ...e.einheiten.map((u) => h('option', { value: u, text: u })));
+
+  const weiter = (name: string, eh: string) => {
+    document.querySelector('.schatten')?.remove();
+    sucheOffen = false;
+    block = { name, einheit: eh };
+    neu();
+  };
+  const zuweisen = async (a: Artikel) => {
+    await db.artikel.update(a.id!, { codes: [...(a.codes ?? []), code] });
+    weiter(a.name, a.einheit);
+  };
+
+  // Ohne Suchbegriff die Kacheln dieses Projekts - meist ist es eines davon.
+  const zeichnen = async () => {
+    const q = feld.value.trim();
+    const liste = q.length >= 2 ? await suchen(q, baustelle.id) : await kacheln(baustelle.id!, 8);
+    treffer.replaceChildren(
+      ...liste.map((a) =>
+        h('button', { type: 'button', onclick: () => void zuweisen(a) },
+          h('span', { class: 'nm', text: a.name }),
+          h('span', { class: 'eh', text: a.einheit }),
+        ),
+      ),
+    );
+  };
+  feld.addEventListener('input', () => void zeichnen());
+  await zeichnen();
+
+  blatt(
+    'Unbekannter Code',
+    [
+      h('p', { class: 'hinweis', style: 'padding:0',
+        text: `${code} kennt der Katalog noch nicht. Welcher Artikel ist das? Ab dem nächsten Scan weiß es die App.` }),
+      h('label', { class: 'feld', style: 'margin:0' }, feld),
+      treffer,
+      h('label', { class: 'feld' }, h('span', { text: 'Einheit, falls neu' }), einheit),
+    ],
+    [
+      { text: 'Abbrechen', art: 'zweit' },
+      {
+        text: 'Neu anlegen',
+        tun: async () => {
+          const name = feld.value.trim();
+          if (!name) {
+            melden('Name fehlt', 'Für einen neuen Artikel oben die Bezeichnung eintippen.');
+            return;
+          }
+          const da = await db.artikel.where('name').equals(name).first();
+          if (da) return zuweisen(da);
+          await db.artikel.add({ name, einheit: einheit.value, anzahl: 0, codes: [code] });
+          weiter(name, einheit.value);
+        },
+      },
+    ],
+  );
 }
 
 /** Neuen Artikel im Fluss anlegen — ohne den Bildschirm zu verlassen. */

@@ -77,7 +77,9 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
+        // wasm: der Leser des Scanners. Er muss offline auf der Baustelle da
+        // sein - also in den Vorrat, auch wenn er der groesste Brocken ist.
+        globPatterns: ['**/*.{js,css,html,png,svg,woff2,wasm}'],
         cleanupOutdatedCaches: true,
         navigateFallback: '/MaterialBlitz/index.html',
         // Ohne diese Liste beantwortet der Service Worker **jede** Navigation
