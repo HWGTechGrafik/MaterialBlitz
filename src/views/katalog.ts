@@ -2,7 +2,7 @@ import { artikelMitCode, db, einstellungenLesen } from '../db';
 import { codeArt, codePruefen, eigenerCode, istEigenerCode } from '../lib/codes';
 import { teilen } from '../lib/share';
 import { neu } from '../store';
-import { blatt, h, kopfKnopf, kopfRechts, melden } from '../ui';
+import { blatt, h, kopfKnopf, kopfRechts, melden, umschalter, type NeuArt } from '../ui';
 import { baustelleAnlegen } from './uebersicht';
 
 let reiter: 'katalog' | 'baustellen' = 'katalog';
@@ -17,12 +17,12 @@ export async function katalogView(): Promise<HTMLElement[]> {
     { class: 'kopf' },
     h('div', { class: 'kopf-text' },
       h('div', { class: 'eyebrow', text: 'Register' }),
-      h('h1', { text: imKatalog ? 'Katalog' : 'Projekte' }),
+      h('h1', { text: imKatalog ? 'Archiv' : 'Projekte' }),
     ),
     kopfRechts(
       null,
       kopfKnopf({
-        ikon: 'liste', titel: 'Register Katalog', art: imKatalog ? 'aktiv' : undefined,
+        ikon: 'liste', titel: 'Register Archiv', art: imKatalog ? 'aktiv' : undefined,
         tun: () => { reiter = 'katalog'; neu(); },
       }),
       kopfKnopf({
@@ -32,10 +32,7 @@ export async function katalogView(): Promise<HTMLElement[]> {
       imKatalog
         ? kopfKnopf({ ikon: 'strichcode', titel: 'Etiketten drucken', tun: () => void etikettenDrucken() })
         : null,
-      kopfKnopf({
-        ikon: 'plus', titel: imKatalog ? 'Artikel anlegen' : 'Neues Projekt', art: 'haupt',
-        tun: () => { if (imKatalog) void artikelBearbeiten(); else baustelleAnlegen(false); },
-      }),
+      kopfKnopf({ ikon: 'plus', titel: 'Neu anlegen', art: 'haupt', tun: () => neuAnlegen() }),
     ),
   );
 
@@ -46,13 +43,25 @@ export async function katalogView(): Promise<HTMLElement[]> {
   return [kopf, rumpf];
 }
 
+/**
+ * Das Plus oeffnet gleich das Formular zum offenen Register; oben schaltet
+ * ein Umschalter zwischen Projekt und Artikel um. Das Register wechselt mit,
+ * damit das Neue danach gleich in der Liste steht.
+ */
+function neuAnlegen(art: NeuArt = reiter === 'katalog' ? 'artikel' : 'projekt'): void {
+  const register = art === 'artikel' ? 'katalog' : 'baustellen';
+  if (reiter !== register) { reiter = register; neu(); }
+  if (art === 'artikel') void artikelBearbeiten(undefined, umschalter(art, neuAnlegen));
+  else baustelleAnlegen(false, umschalter(art, neuAnlegen));
+}
+
 // ---------------------------------------------------------------- Katalog
 
 async function katalogListe(rumpf: HTMLElement): Promise<void> {
   const artikel = (await db.artikel.toArray()).sort((a, b) => a.name.localeCompare(b.name, 'de'));
 
   if (!artikel.length) {
-    rumpf.append(h('div', { class: 'leer', text: 'Der Katalog wächst von selbst: was du in einem Projekt aufschreibst, steht danach hier.' }));
+    rumpf.append(h('div', { class: 'leer', text: 'Das Archiv wächst von selbst: was du in einem Projekt aufschreibst, steht danach hier.' }));
     return;
   }
 
@@ -76,7 +85,7 @@ async function katalogListe(rumpf: HTMLElement): Promise<void> {
   );
 }
 
-async function artikelBearbeiten(id?: number): Promise<void> {
+export async function artikelBearbeiten(id?: number, oben?: HTMLElement): Promise<void> {
   const vorhanden = id ? await db.artikel.get(id) : undefined;
   const e = await einstellungenLesen();
   const name = h('input', { type: 'text', value: vorhanden?.name ?? '', placeholder: 'z.B. NYM-J 3x1,5' });
@@ -150,7 +159,7 @@ async function artikelBearbeiten(id?: number): Promise<void> {
     }
     const doppelt = await db.artikel.where('name').equals(n).first();
     if (doppelt && doppelt.id !== vorhanden?.id) {
-      melden('Gibt es schon', `„${n}" steht bereits im Katalog.`);
+      melden('Gibt es schon', `„${n}" steht bereits im Archiv.`);
       return null;
     }
     return db.transaction('rw', db.artikel, async () => {
@@ -171,6 +180,7 @@ async function artikelBearbeiten(id?: number): Promise<void> {
   blatt(
     vorhanden ? 'Artikel bearbeiten' : 'Neuer Artikel',
     [
+      oben ?? null,
       h('label', { class: 'feld' }, h('span', { text: 'Bezeichnung' }), name),
       h('label', { class: 'feld' }, h('span', { text: 'Einheit' }), einheit),
       h('div', { class: 'feld' },
@@ -225,7 +235,7 @@ let bogenWahl = 'z3474';
 async function etikettenDrucken(vorauswahl: number[] = []): Promise<void> {
   const artikel = (await db.artikel.toArray()).sort((a, b) => a.name.localeCompare(b.name, 'de'));
   if (!artikel.length) {
-    melden('Katalog leer', 'Etiketten gibt es für Artikel im Katalog – der ist noch leer.');
+    melden('Archiv leer', 'Etiketten gibt es für Artikel im Archiv – das ist noch leer.');
     return;
   }
   // Schon beim Oeffnen nachladen, nicht erst beim Erzeugen: am iPhone darf

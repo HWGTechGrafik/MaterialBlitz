@@ -59,6 +59,27 @@ export function marke(klasse = 'marke'): SVGElement {
   return svg;
 }
 
+export type NeuArt = 'projekt' | 'artikel';
+
+/**
+ * Umschalter Projekt | Artikel oben im Anlege-Blatt (Dashboard und Archiv).
+ * Die andere Seite schliesst das Blatt und uebergibt an `wechseln`, das das
+ * passende Formular oeffnet.
+ */
+export function umschalter(aktiv: NeuArt, wechseln: (art: NeuArt) => void): HTMLElement {
+  const wahl = (art: NeuArt, text: string) =>
+    h('button', {
+      type: 'button', text, 'aria-pressed': String(art === aktiv),
+      onclick: () => {
+        if (art === aktiv) return;
+        document.querySelector('.schatten')?.remove();
+        wechseln(art);
+      },
+    });
+  return h('div', { class: 'umschalter', role: 'group', 'aria-label': 'Was anlegen' },
+    wahl('projekt', 'Projekt'), wahl('artikel', 'Artikel'));
+}
+
 /** Bestaetigung oder Hinweis als Blatt von unten. */
 export function blatt(
   titel: string,

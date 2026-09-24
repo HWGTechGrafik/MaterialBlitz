@@ -118,8 +118,8 @@ export function scannen(): Promise<string | null> {
       } catch (e) {
         const name = (e as DOMException).name;
         fehler(name === 'NotAllowedError'
-          ? 'Kamera nicht erlaubt. In den iPhone-Einstellungen unter Safari › Kamera freigeben – oder den Code im Katalog abtippen.'
-          : `Kamera nicht verfügbar (${name}). Den Code im Katalog abtippen.`);
+          ? 'Kamera nicht erlaubt. In den iPhone-Einstellungen unter Safari › Kamera freigeben – oder den Code im Archiv abtippen.'
+          : `Kamera nicht verfügbar (${name}). Den Code im Archiv abtippen.`);
         return;
       }
       if (!aktiv) { strom.getTracks().forEach((s) => s.stop()); return; }
@@ -132,7 +132,7 @@ export function scannen(): Promise<string | null> {
       try {
         await bereit;
       } catch (e) {
-        fehler(`${(e as Error).message} Den Code bitte im Katalog abtippen.`);
+        fehler(`${(e as Error).message} Den Code bitte im Archiv abtippen.`);
         return;
       }
       status.textContent = 'Code in den Rahmen halten';

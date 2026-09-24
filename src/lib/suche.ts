@@ -277,7 +277,7 @@ export async function durchsuchen(begriff: string): Promise<Gruppe[]> {
   const katalog = artikel
     .map((a): Fund | null => {
       const treffer = trifft(
-        `Katalog ${a.name}`,
+        `Archiv ${a.name}`,
         [
           { feld: 'Artikel', zeig: a.name },
           { feld: 'Einheit', zeig: a.einheit },
@@ -300,7 +300,7 @@ export async function durchsuchen(begriff: string): Promise<Gruppe[]> {
   if (katalog.length) {
     const zuviel = katalog.length - KATALOG_MAX;
     gruppen.push({
-      titel: 'Katalog',
+      titel: 'Archiv',
       unter: zuviel > 0 ? `${katalog.length} Artikel · ${zuviel} weitere nicht gezeigt` : undefined,
       funde: katalog.slice(0, KATALOG_MAX),
     });

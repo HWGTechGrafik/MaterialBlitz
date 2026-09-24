@@ -328,6 +328,18 @@ mark {
 .knopf-reihe { display: flex; gap: 8px; }
 .knopf-reihe .knopf { flex: 1; }
 
+/* Umschalter Projekt | Artikel oben im Anlege-Blatt: volle Daumenhoehe. */
+.umschalter {
+  display: flex; gap: 4px; padding: 4px; margin-bottom: 12px;
+  background: var(--surface-alt); border-radius: var(--r);
+}
+.umschalter button {
+  flex: 1; min-height: 44px; cursor: pointer;
+  border: 0; border-radius: calc(var(--r) - 2px);
+  background: none; color: var(--ink-muted); font: 600 16px var(--ui);
+}
+.umschalter button[aria-pressed='true'] { background: var(--ader); color: #fff; }
+
 /* -------------------------------------------------------------- Karten */
 
 .karte { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; }

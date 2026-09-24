@@ -1,7 +1,8 @@
 import { db, einstellungenLesen, einstellungenSchreiben } from '../db';
 import { SICHERUNG_ARTIKEL, SICHERUNG_TAGE, type Baustelle, type Kunde } from '../model';
 import { gehe, neu, zustand } from '../store';
-import { blatt, h, ikon, kopfKnopf, kopfRechts, marke, melden } from '../ui';
+import { blatt, h, ikon, kopfKnopf, kopfRechts, marke, melden, umschalter, type NeuArt } from '../ui';
+import { artikelBearbeiten } from './katalog';
 import { tageSeit } from '../lib/format';
 import { dateiWaehlen } from '../lib/share';
 import { katalogEinlesen, scheinUebernehmen, sicherungEinspielen, vorschau } from '../lib/transfer';
@@ -39,9 +40,18 @@ function kopfBauen(): HTMLElement {
       // Das Einlesen gehoert hierher, nicht in das Projekt: wer einen Schein
       // empfaengt, hat das zugehoerige Projekt meist noch gar nicht.
       kopfKnopf({ ikon: 'einlesen', titel: 'Datei einlesen', tun: einlesen }),
-      kopfKnopf({ ikon: 'plus', titel: 'Neues Projekt', art: 'haupt', tun: () => baustelleAnlegen() }),
+      kopfKnopf({ ikon: 'plus', titel: 'Neu anlegen', art: 'haupt', tun: () => neuAnlegen() }),
     ),
   );
+}
+
+/**
+ * Das Plus im Dashboard: zuerst ein Projekt, oben schaltet der Umschalter auf
+ * Artikel um. Ein neues Projekt oeffnet danach gleich seinen Schein.
+ */
+function neuAnlegen(art: NeuArt = 'projekt'): void {
+  if (art === 'artikel') void artikelBearbeiten(undefined, umschalter(art, neuAnlegen));
+  else baustelleAnlegen(true, umschalter(art, neuAnlegen));
 }
 
 // -------------------------------------------------------------- Suchzeile
@@ -55,7 +65,7 @@ function suchzeile(rumpf: HTMLElement): HTMLElement {
     type: 'search',
     value: suche,
     placeholder: 'Suchen — Projekt, Kunde, Material …',
-    'aria-label': 'Projekte, Scheine, Positionen und Katalog nach Stichwörtern durchsuchen',
+    'aria-label': 'Projekte, Scheine, Positionen und Archiv nach Stichwörtern durchsuchen',
     autocomplete: 'off',
     enterkeyhint: 'search',
   });
@@ -163,7 +173,7 @@ async function fundListe(): Promise<HTMLElement[]> {
   if (!anzahl) {
     teile.push(
       h('div', { class: 'leer', text:
-        'Nichts gefunden. Versuch es mit einem Wort weniger — gesucht wird in Projekten, Kunden, Scheinen, einzelnen Positionen und im Katalog.' }),
+        'Nichts gefunden. Versuch es mit einem Wort weniger — gesucht wird in Projekten, Kunden, Scheinen, einzelnen Positionen und im Archiv.' }),
     );
     return teile;
   }
@@ -265,7 +275,7 @@ async function sicherungFaellig(): Promise<HTMLElement | null> {
       'span',
       {},
       h('b', { text: 'Sicherung fällig. ' }),
-      `${grund} Das Handy sichert die App nicht von selbst — ohne Sicherung ist dein Katalog bei Geräteverlust weg.`,
+      `${grund} Das Handy sichert die App nicht von selbst — ohne Sicherung ist dein Archiv bei Geräteverlust weg.`,
       h('br'),
       h('button', {
         class: 'knopf leise',
@@ -280,14 +290,16 @@ async function sicherungFaellig(): Promise<HTMLElement | null> {
 
 /**
  * Neues Projekt anlegen. `oeffnen` springt danach in den Schein — aus dem
- * Register heraus bleibt man dagegen in der Liste stehen.
+ * Register heraus bleibt man dagegen in der Liste stehen. `oben` steht ueber
+ * den Feldern - dort sitzt im Archiv der Umschalter Projekt | Artikel.
  */
-export function baustelleAnlegen(oeffnen = true): void {
+export function baustelleAnlegen(oeffnen = true, oben?: HTMLElement): void {
   const ort = h('input', { type: 'text', placeholder: 'z.B. Hauptstraße 5' });
   const kunde = h('input', { type: 'text', placeholder: 'leer lassen für Werkstatt o.ä.' });
   blatt(
     'Neues Projekt',
     [
+      oben ?? null,
       h('label', { class: 'feld' }, h('span', { text: 'Ort' }), ort),
       h('label', { class: 'feld' }, h('span', { text: 'Kunde (optional)' }), kunde),
     ],
@@ -354,15 +366,15 @@ async function einlesen(): Promise<void> {
 
   if (v.art === 'katalog') {
     blatt(
-      'Katalog übernehmen?',
+      'Ins Archiv übernehmen?',
       [
         h('div', { class: 'karte' },
-          zeile('Katalog', v.titel),
+          zeile('Grundstock', v.titel),
           zeile('Artikel', String(v.artikel)),
           zeile('Erstellt', v.zeitpunkt),
         ),
         h('p', { class: 'hinweis', style: 'padding:0',
-          text: 'Fehlende Artikel kommen in den Katalog dazu. Was schon da ist, bleibt, wie es ist – nichts wird gelöscht.' }),
+          text: 'Fehlende Artikel kommen ins Archiv dazu. Was schon da ist, bleibt, wie es ist – nichts wird gelöscht.' }),
       ],
       [
         { text: 'Abbrechen', art: 'zweit' },
@@ -372,9 +384,9 @@ async function einlesen(): Promise<void> {
             const r = await katalogEinlesen(v.umschlag);
             zustand.einstellungen = await einstellungenLesen();
             neu();
-            melden('Katalog übernommen', r.vorhanden
-              ? `${r.neu} Artikel neu im Katalog, ${r.vorhanden} waren schon da.`
-              : `${r.neu} Artikel neu im Katalog.`);
+            melden('Ins Archiv übernommen', r.vorhanden
+              ? `${r.neu} Artikel neu im Archiv, ${r.vorhanden} waren schon da.`
+              : `${r.neu} Artikel neu im Archiv.`);
           },
         },
       ],

@@ -16,7 +16,7 @@ const wurzel = document.getElementById('app')!;
 // Strichzeichnungen im Kopf sahen sie wie aus einer anderen App aus.
 const REITER: Array<{ ansicht: Ansicht; sinnbild: IkonName; text: string }> = [
   { ansicht: 'uebersicht', sinnbild: 'raster', text: 'Dashboard' },
-  { ansicht: 'katalog', sinnbild: 'liste', text: 'Katalog' },
+  { ansicht: 'katalog', sinnbild: 'liste', text: 'Archiv' },
   { ansicht: 'einstellungen', sinnbild: 'regler', text: 'Einstellungen' },
 ];
 

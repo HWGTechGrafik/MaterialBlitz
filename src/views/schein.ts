@@ -171,7 +171,7 @@ async function rumpfBauen(
     }
     rumpf.append(raster);
   } else {
-    rumpf.append(h('div', { class: 'leer', text: 'Der Katalog ist noch leer. Über „Anderes Material suchen" den ersten Artikel anlegen.' }));
+    rumpf.append(h('div', { class: 'leer', text: 'Das Archiv ist noch leer. Über „Anderes Material suchen" den ersten Artikel anlegen.' }));
   }
 
   rumpf.append(
@@ -392,7 +392,7 @@ async function codeZuordnen(code: string, baustelle: Baustelle): Promise<void> {
     'Unbekannter Code',
     [
       h('p', { class: 'hinweis', style: 'padding:0',
-        text: `${code} kennt der Katalog noch nicht. Welcher Artikel ist das? Ab dem nächsten Scan weiß es die App.` }),
+        text: `${code} kennt das Archiv noch nicht. Welcher Artikel ist das? Ab dem nächsten Scan weiß es die App.` }),
       h('label', { class: 'feld', style: 'margin:0' }, feld),
       treffer,
       h('label', { class: 'feld' }, h('span', { text: 'Einheit, falls neu' }), einheit),
@@ -424,7 +424,7 @@ async function neuerArtikel(name: string): Promise<void> {
   blatt(
     'Neuer Artikel',
     [
-      h('p', { class: 'hinweis', style: 'padding:0', text: `„${name}" landet im Katalog und ist in jedem Projekt wieder da.` }),
+      h('p', { class: 'hinweis', style: 'padding:0', text: `„${name}" landet im Archiv und ist in jedem Projekt wieder da.` }),
       h('label', { class: 'feld' }, h('span', { text: 'Einheit' }), auswahl),
     ],
     [

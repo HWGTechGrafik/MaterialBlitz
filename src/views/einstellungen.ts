@@ -98,7 +98,7 @@ async function sicherungKarte(): Promise<HTMLElement> {
   return h('div', { class: 'karte' },
     h('h2', { text: 'Sicherung' }),
     h('p', {
-      text: 'Enthält alles: Katalog, Kunden, Projekte, Firmenkopf und die Historie. Dieselbe Datei richtet auch ein neues Handy ein.',
+      text: 'Enthält alles: Archiv, Kunden, Projekte, Firmenkopf und die Historie. Dieselbe Datei richtet auch ein neues Handy ein.',
     }),
     h('div', { class: 'paar' },
       h('span', { class: 'k', text: 'Zuletzt gesichert' }),
@@ -191,10 +191,10 @@ function einheitenKarte(einheiten: string[]): HTMLElement {
 async function katalogLeerenKarte(): Promise<HTMLElement> {
   const anzahl = await db.artikel.count();
   const karte = h('div', { class: 'karte' },
-    h('h2', { text: 'Katalog leeren' }),
+    h('h2', { text: 'Archiv leeren' }),
     h('p', { text: anzahl
-      ? `Löscht alle ${anzahl} Artikel des Katalogs samt ihrer Codes. Projekte und Scheine bleiben, wie sie sind.`
-      : 'Der Katalog ist leer.' }),
+      ? `Löscht alle ${anzahl} Artikel des Archivs samt ihrer Codes. Projekte und Scheine bleiben, wie sie sind.`
+      : 'Das Archiv ist leer.' }),
   );
   if (!anzahl) return karte;
 
@@ -206,18 +206,18 @@ async function katalogLeerenKarte(): Promise<HTMLElement> {
     ], [
       { text: 'Abbrechen', art: 'zweit' },
       {
-        text: 'Katalog löschen',
+        text: 'Archiv löschen',
         art: 'gefahr',
         tun: async () => {
           if (eingabe.value.trim() !== String(anzahl)) {
-            melden('Nicht gelöscht', 'Die Zahl stimmte nicht. Der Katalog ist unverändert.');
+            melden('Nicht gelöscht', 'Die Zahl stimmte nicht. Das Archiv ist unverändert.');
             return;
           }
           await db.artikel.clear();
           // Nichts Neues mehr, das in die naechste Sicherung gehoert.
           zustand.einstellungen = await einstellungenSchreiben({ neueArtikel: 0 });
           neu();
-          melden('Katalog geleert', `${anzahl} Artikel gelöscht. Selbst angelegte Einheiten bleiben – sie lassen sich oben unter „Einheiten“ entfernen.`);
+          melden('Archiv geleert', `${anzahl} Artikel gelöscht. Selbst angelegte Einheiten bleiben – sie lassen sich oben unter „Einheiten“ entfernen.`);
         },
       },
     ]);
@@ -237,7 +237,7 @@ async function katalogLeerenKarte(): Promise<HTMLElement> {
   const schritt1 = async () => {
     const mitCode = await db.artikel.filter((a) => !!a.codes?.length).count();
     const e = await einstellungenLesen();
-    blatt('Katalog leeren?', [
+    blatt('Archiv leeren?', [
       h('div', { class: 'karte' },
         h('div', { class: 'paar' }, h('span', { class: 'k', text: 'Artikel' }), h('span', { class: 'v', text: String(anzahl) })),
         h('div', { class: 'paar' }, h('span', { class: 'k', text: 'davon mit Code' }), h('span', { class: 'v', text: String(mitCode) })),
@@ -246,7 +246,7 @@ async function katalogLeerenKarte(): Promise<HTMLElement> {
       ),
       h('div', { class: 'merk warnung' },
         h('span', { text: '⚠️' }),
-        h('span', { text: 'Projekte und Scheine bleiben – was dort steht, ist eine Abschrift. Vorher eine Sicherung erstellen, dann lässt sich der Katalog zurückholen.' }),
+        h('span', { text: 'Projekte und Scheine bleiben – was dort steht, ist eine Abschrift. Vorher eine Sicherung erstellen, dann lässt sich das Archiv zurückholen.' }),
       ),
     ], [
       { text: 'Abbrechen', art: 'zweit' },
@@ -254,7 +254,7 @@ async function katalogLeerenKarte(): Promise<HTMLElement> {
     ]);
   };
 
-  karte.append(h('button', { class: 'knopf gefahr', type: 'button', text: 'Ganzen Katalog löschen…', onclick: () => void schritt1() }));
+  karte.append(h('button', { class: 'knopf gefahr', type: 'button', text: 'Ganzes Archiv löschen…', onclick: () => void schritt1() }));
   return karte;
 }
 
