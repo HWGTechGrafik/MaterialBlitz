@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
+import { codeNormalisieren } from './lib/codes';
 import {
   EINHEITEN_STANDARD,
   FIRMA_LEER,
@@ -26,6 +27,13 @@ class MaterialBlitzDB extends Dexie {
       baustellen: '++id, ort, zuletzt, kundeId',
       scheine: '++id, baustelleId, zustand, erstellt',
       einstellungen: '++id',
+    });
+    // Codes am Artikel (spec §5.6). Mehrfach-Index: jeder Code eines
+    // Artikels ist einzeln auffindbar. Eindeutig haelt ihn die App selbst -
+    // ein eindeutiger Index liesse sonst das Wiederherstellen einer
+    // Sicherung an einem einzigen doppelten Code scheitern.
+    this.version(2).stores({
+      artikel: '++id, &name, anzahl, *codes',
     });
   }
 }
@@ -132,20 +140,33 @@ export async function kacheln(
   return [...vonHier, ...rest].slice(0, anzahl);
 }
 
-/** Vorschlaege ab zwei Buchstaben, hier Verwendetes zuerst. */
+/** Der Artikel, der diesen (normalisierten) Code traegt — oder keiner. */
+export async function artikelMitCode(code: string): Promise<Artikel | undefined> {
+  return db.artikel.where('codes').equals(code).first();
+}
+
+/**
+ * Vorschlaege ab zwei Buchstaben, hier Verwendetes zuerst. Ein abgetippter
+ * Code, der genau passt, steht vor allem anderen.
+ */
 export async function suchen(
   begriff: string,
   baustelleId?: number,
-): Promise<Array<Artikel & { hier: number }>> {
+): Promise<Array<Artikel & { hier: number; perCode?: boolean }>> {
   const q = begriff.trim().toLowerCase();
   if (q.length < 2) return [];
   const [alle, hier] = await Promise.all([
     db.artikel.toArray(),
     baustelleId ? verwendungHier(baustelleId) : Promise.resolve(new Map<string, number>()),
   ]);
-  return alle
-    .filter((a) => a.name.toLowerCase().includes(q))
+  const code = codeNormalisieren(begriff);
+  const perCode = alle.filter((a) => a.codes?.includes(code));
+  const perName = alle
+    .filter((a) => !perCode.includes(a) && a.name.toLowerCase().includes(q))
     .map((a) => ({ ...a, hier: hier.get(a.name) ?? 0 }))
-    .sort((a, b) => b.hier - a.hier || b.anzahl - a.anzahl)
-    .slice(0, 8);
+    .sort((a, b) => b.hier - a.hier || b.anzahl - a.anzahl);
+  return [
+    ...perCode.map((a) => ({ ...a, hier: hier.get(a.name) ?? 0, perCode: true })),
+    ...perName,
+  ].slice(0, 8);
 }

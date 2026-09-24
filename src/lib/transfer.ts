@@ -199,8 +199,16 @@ export async function sicherungEinspielen(
 
     for (const a of s.artikel) {
       const da = await db.artikel.where('name').equals(a.name).first();
-      if (da) await db.artikel.update(da.id!, { anzahl: Math.max(da.anzahl, a.anzahl) });
-      else await db.artikel.add({ name: a.name, einheit: a.einheit, anzahl: a.anzahl });
+      // Codes vereinen - aber keinen, der hier schon an einem anderen
+      // Artikel haengt: ein Code gehoert hoechstens einem.
+      const codes = [...(da?.codes ?? [])];
+      for (const c of a.codes ?? []) {
+        if (codes.includes(c)) continue;
+        const traeger = await db.artikel.where('codes').equals(c).first();
+        if (!traeger || traeger.id === da?.id) codes.push(c);
+      }
+      if (da) await db.artikel.update(da.id!, { anzahl: Math.max(da.anzahl, a.anzahl), codes });
+      else await db.artikel.add({ name: a.name, einheit: a.einheit, anzahl: a.anzahl, codes });
     }
     for (const k of s.kunden) {
       if (!(await db.kunden.where('name').equals(k.name).first())) {

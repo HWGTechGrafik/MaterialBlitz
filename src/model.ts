@@ -7,6 +7,12 @@ export interface Artikel {
   einheit: string;
   /** Wie oft insgesamt verwendet. Bestimmt die Reihenfolge der Vorschlaege. */
   anzahl: number;
+  /**
+   * Strich- und QR-Codes, an denen die App den Artikel wiedererkennt —
+   * normalisiert (lib/codes.ts). Ein Code gehoert hoechstens **einem**
+   * Artikel. Nur zum Wiederfinden: nie auf PDF oder CSV.
+   */
+  codes?: string[];
 }
 
 export interface Kunde {

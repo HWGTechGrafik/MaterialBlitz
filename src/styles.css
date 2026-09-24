@@ -368,6 +368,35 @@ mark {
 }
 .merk.warnung { background: var(--warn-soft); color: var(--warn); }
 
+/* Codes am Artikel (Register) */
+.codes { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
+.code-zeile {
+  display: flex; align-items: center; gap: 10px;
+  padding-left: 12px; border-radius: var(--r); background: var(--surface-alt);
+}
+.code-wert { font-weight: 600; letter-spacing: 0.04em; font-variant-numeric: tabular-nums; word-break: break-all; }
+.code-art { flex: 1; font-size: 13px; color: var(--ink-muted); }
+.code-eingabe { display: flex; gap: 8px; }
+.code-eingabe input { flex: 1; min-width: 0; }
+/* .knopf ist sonst volle Breite - hier stehen die Knoepfe neben etwas. */
+.code-zeile .knopf, .code-eingabe .knopf, .code-taten .knopf { width: auto; }
+.code-zeile .knopf { padding: 0 12px; }
+.code-eingabe .knopf { flex: none; min-height: 46px; padding: 0 14px; }
+.code-hinweis { font-size: 13px; color: var(--ink-muted); margin-top: 4px; }
+.code-hinweis:empty { display: none; }
+.code-hinweis.falsch { color: var(--warn); }
+.code-taten { display: flex; flex-wrap: wrap; justify-content: space-between; }
+
+.etiketten-liste { max-height: 40vh; overflow-y: auto; border-top: 1px solid var(--line); }
+.etikett-zeile { display: flex; align-items: center; gap: 12px; min-height: 50px; border-bottom: 1px solid var(--line); }
+.etikett-zeile input { width: 22px; height: 22px; flex: none; accent-color: var(--ader); }
+.etikett-zeile .nm { flex: 1; min-width: 0; }
+.etikett-zeile select {
+  flex: none; min-height: 38px; padding: 0 8px;
+  border: 1px solid var(--line); border-radius: var(--r);
+  background: var(--ground); color: var(--ink); font: inherit; font-size: 15px;
+}
+
 /* -------------------------------------------------------------- Reiter */
 
 .reiter {

@@ -282,12 +282,15 @@ async function suchfeld(baustelle: Baustelle): Promise<HTMLElement> {
       treffer.append(
         h('button', { type: 'button', onclick: () => { sucheOffen = false; block = { name: a.name, einheit: a.einheit }; neu(); } },
           h('span', { class: 'nm', text: a.name }),
+          a.perCode ? h('span', { class: 'plakette', text: 'Code' }) : null,
           a.hier ? h('span', { class: 'plakette', text: 'hier' }) : null,
           h('span', { class: 'eh', text: a.einheit }),
         ),
       );
     }
-    if (q.length >= 2 && !gefunden.some((a) => a.name.toLowerCase() === q.toLowerCase())) {
+    // Ein Code, der passt, ist die Antwort - daraus einen Artikel namens
+    // "4006381333931" anzulegen, waere nur ein Stolperstein.
+    if (q.length >= 2 && !gefunden.some((a) => a.perCode || a.name.toLowerCase() === q.toLowerCase())) {
       treffer.append(
         h('button', { type: 'button', onclick: () => neuerArtikel(q) },
           h('span', { class: 'nm neu', text: `„${q}" neu anlegen` }),
