@@ -360,11 +360,39 @@ async function baustelleBearbeiten(id: number): Promise<void> {
             h('span', { text: `${scheine} Schein(e) hängen daran. Löschen ist deshalb nicht möglich — „Abschließen" nimmt das Projekt aus der Übersicht, die Historie bleibt.` }),
           )
         : h('button', {
-            class: 'knopf gefahr', type: 'button', text: 'Projekt löschen',
-            onclick: async () => {
-              await db.baustellen.delete(id);
+            class: 'knopf gefahr', type: 'button', text: 'Projekt löschen…',
+            onclick: () => {
+              // Rueckfrage im eigenen Blatt: ein Handschuh trifft den roten
+              // Knopf leicht aus Versehen. Eine zufaellige Zahl zum Abtippen
+              // zwingt zum Hinsehen und geht mit dem Ziffernblock auch mit
+              // Handschuhen. Abbrechen fuehrt zurueck ins Projekt.
+              const zahl = String(100 + Math.floor(Math.random() * 900));
+              const eingabe = h('input', { type: 'text', inputMode: 'numeric', autocomplete: 'off', placeholder: zahl });
               document.querySelector('.schatten')?.remove();
-              neu();
+              blatt(
+                'Projekt löschen?',
+                [
+                  h('p', { class: 'hinweis', style: 'padding:0',
+                    text: `„${b.ort}“${kunde ? ` (${kunde.name})` : ''} wird gelöscht. Das lässt sich nicht rückgängig machen.` }),
+                  h('p', { class: 'hinweis', style: 'padding:0', text: `Zum Löschen diese Zahl eintippen: ${zahl}` }),
+                  h('label', { class: 'feld' }, eingabe),
+                ],
+                [
+                  { text: 'Abbrechen', art: 'zweit', tun: () => void baustelleBearbeiten(id) },
+                  {
+                    text: 'Löschen', art: 'gefahr',
+                    tun: async () => {
+                      if (eingabe.value.trim() !== zahl) {
+                        melden('Nicht gelöscht', 'Die Zahl stimmte nicht. Das Projekt ist unverändert.');
+                        return;
+                      }
+                      await db.baustellen.delete(id);
+                      neu();
+                    },
+                  },
+                ],
+              );
+              setTimeout(() => eingabe.focus(), 50);
             },
           }),
     ],
