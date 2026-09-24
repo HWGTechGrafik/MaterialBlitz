@@ -95,7 +95,9 @@ export const EINHEITEN_STANDARD = ['Stk', 'm', 'lfm', 'kg', 'Rolle', 'Pkg', 'Sat
  * und ein Druckpunkt, der je nach Artikel etwas anderes tut, waere schlimmer
  * als keiner.
  */
-export const ZAEHLBAR = ['Stk', 'Pkg', 'Satz', 'Rolle'];
+// Sack ist keine feste Einheit, kommt aber mit dem Bau-Katalog - und dort
+// wird sackweise gezaehlt.
+export const ZAEHLBAR = ['Stk', 'Pkg', 'Satz', 'Rolle', 'Sack'];
 
 export function istZaehlbar(einheit: string): boolean {
   return ZAEHLBAR.includes(einheit);

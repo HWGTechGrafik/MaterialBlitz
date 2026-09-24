@@ -3,9 +3,10 @@ import type { Artikel, Baustelle, Einstellungen, Kunde, Position, Schein } from 
 import { dateinameTeil, datumSortierbar, zeit, zeitKompakt } from './format';
 
 /**
- * Ein Format fuer zwei Anlaesse: Uebergabe eines Scheins an einen Kollegen und
- * Sicherung des gesamten Bestands. Die Kopfzeile sagt, was drinsteht, der
- * Import-Knopf erkennt es selbst.
+ * Ein Format fuer drei Anlaesse: Uebergabe eines Scheins an einen Kollegen,
+ * Sicherung des gesamten Bestands und ein Katalog-Grundstock, der mit der App
+ * ausgeliefert wird. Die Kopfzeile sagt, was drinsteht, der Import-Knopf
+ * erkennt es selbst.
  *
  * **Endung `.txt`, auch wenn JSON drinsteht.** Der Teilen-Dialog erlaubt kein
  * `application/json`, und eine eigene Endung ist am iPhone ebenfalls schlecht
@@ -13,7 +14,7 @@ import { dateinameTeil, datumSortierbar, zeit, zeitKompakt } from './format';
  */
 export interface Umschlag {
   mblitz: 1;
-  typ: 'schein' | 'sicherung';
+  typ: 'schein' | 'sicherung' | 'katalog';
   erzeugt: number;
   absender?: string;
   schein?: {
@@ -27,6 +28,13 @@ export interface Umschlag {
     baustellen: Baustelle[];
     scheine: Schein[];
     einstellungen: Einstellungen;
+  };
+  katalog?: {
+    /** Wofuer der Grundstock gedacht ist, etwa "Elektro". */
+    titel: string;
+    artikel: Array<{ name: string; einheit: string }>;
+    /** Einheiten, die die Artikel brauchen und die feste Liste nicht hat. */
+    einheiten: string[];
   };
 }
 
@@ -90,7 +98,8 @@ export async function sicherungPacken(): Promise<File> {
 export type Vorschau =
   | { art: 'fehler'; text: string }
   | { art: 'schein'; umschlag: Umschlag; ort: string; positionen: number; absender: string; zeitpunkt: string }
-  | { art: 'sicherung'; umschlag: Umschlag; artikel: number; baustellen: number; scheine: number; zeitpunkt: string };
+  | { art: 'sicherung'; umschlag: Umschlag; artikel: number; baustellen: number; scheine: number; zeitpunkt: string }
+  | { art: 'katalog'; umschlag: Umschlag; titel: string; artikel: number; zeitpunkt: string };
 
 /**
  * Datei ansehen, **bevor** etwas uebernommen wird. Nie still einlesen — sonst
@@ -124,6 +133,14 @@ export function vorschau(text: string): Vorschau {
       artikel: u.sicherung.artikel.length,
       baustellen: u.sicherung.baustellen.length,
       scheine: u.sicherung.scheine.length,
+      zeitpunkt,
+    };
+  }
+  if (u.typ === 'katalog' && u.katalog) {
+    return {
+      art: 'katalog', umschlag: u,
+      titel: u.katalog.titel,
+      artikel: u.katalog.artikel.length,
       zeitpunkt,
     };
   }
@@ -241,4 +258,30 @@ export async function sicherungEinspielen(
     }
   });
   await einstellungenSchreiben({ letzteSicherung: Date.now(), neueArtikel: 0 });
+}
+
+/**
+ * Katalog-Grundstock einlesen. Kommt nur **dazu**: vorhandene Artikel bleiben,
+ * wie sie sind - auch ihre Einheit, der eigene Stand geht vor. Fehlende
+ * Einheiten kommen in die Liste, sonst waere die Einheit beim Bearbeiten des
+ * Artikels nicht waehlbar und fiele still auf die erste zurueck.
+ *
+ * Zaehlt nicht als Sicherung und nicht als neue Artikel fuer die Erinnerung:
+ * der Grundstock laesst sich jederzeit aus derselben Datei wiederholen.
+ */
+export async function katalogEinlesen(u: Umschlag): Promise<{ neu: number; vorhanden: number }> {
+  const k = u.katalog!;
+  let neu = 0;
+  await db.transaction('rw', [db.artikel, db.einstellungen], async () => {
+    const e = await einstellungenLesen();
+    const fehlend = k.einheiten.filter((x) => !e.einheiten.includes(x));
+    if (fehlend.length) await einstellungenSchreiben({ einheiten: [...e.einheiten, ...fehlend] });
+
+    for (const a of k.artikel) {
+      if (await db.artikel.where('name').equals(a.name).first()) continue;
+      await db.artikel.add({ name: a.name, einheit: a.einheit, anzahl: 0 });
+      neu++;
+    }
+  });
+  return { neu, vorhanden: k.artikel.length - neu };
 }

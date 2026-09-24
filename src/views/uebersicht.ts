@@ -4,7 +4,7 @@ import { gehe, neu, zustand } from '../store';
 import { blatt, h, ikon, kopfKnopf, kopfRechts, marke, melden } from '../ui';
 import { tageSeit } from '../lib/format';
 import { dateiWaehlen } from '../lib/share';
-import { scheinUebernehmen, sicherungEinspielen, vorschau } from '../lib/transfer';
+import { katalogEinlesen, scheinUebernehmen, sicherungEinspielen, vorschau } from '../lib/transfer';
 import {
   durchsuchen, suchAktiv, suchBegriffe, zerlegen, type Fund, type FundArt,
 } from '../lib/suche';
@@ -345,6 +345,36 @@ async function einlesen(): Promise<void> {
           tun: async () => {
             await scheinUebernehmen(v.umschlag);
             neu();
+          },
+        },
+      ],
+    );
+    return;
+  }
+
+  if (v.art === 'katalog') {
+    blatt(
+      'Katalog übernehmen?',
+      [
+        h('div', { class: 'karte' },
+          zeile('Katalog', v.titel),
+          zeile('Artikel', String(v.artikel)),
+          zeile('Erstellt', v.zeitpunkt),
+        ),
+        h('p', { class: 'hinweis', style: 'padding:0',
+          text: 'Fehlende Artikel kommen in den Katalog dazu. Was schon da ist, bleibt, wie es ist – nichts wird gelöscht.' }),
+      ],
+      [
+        { text: 'Abbrechen', art: 'zweit' },
+        {
+          text: 'Übernehmen',
+          tun: async () => {
+            const r = await katalogEinlesen(v.umschlag);
+            zustand.einstellungen = await einstellungenLesen();
+            neu();
+            melden('Katalog übernommen', r.vorhanden
+              ? `${r.neu} Artikel neu im Katalog, ${r.vorhanden} waren schon da.`
+              : `${r.neu} Artikel neu im Katalog.`);
           },
         },
       ],
