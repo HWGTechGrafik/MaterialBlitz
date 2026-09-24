@@ -1,4 +1,4 @@
-import { einstellungenLesen, einstellungenSchreiben } from '../db';
+import { db, einstellungenLesen, einstellungenSchreiben } from '../db';
 import { EINHEITEN_STANDARD } from '../model';
 import { neu, zustand } from '../store';
 import { blatt, h, melden } from '../ui';
@@ -79,6 +79,7 @@ export async function einstellungenView(): Promise<HTMLElement[]> {
 
       await sicherungKarte(),
       einheitenKarte(e.einheiten),
+      await katalogLeerenKarte(),
       lizenzKarte(),
 
       // Ganz unten und leise: Man sucht sie nur, wenn man wissen will, ob
@@ -176,6 +177,85 @@ function einheitenKarte(einheiten: string[]): HTMLElement {
       },
     }),
   );
+}
+
+// --------------------------------------------------------- Katalog leeren
+
+/**
+ * Den ganzen Katalog loeschen - etwa wenn ein Grundstock fuer das falsche
+ * Gewerk eingelesen wurde. Drei Schritte, und der letzte verlangt die Anzahl
+ * der Artikel als Eingabe: zwei Blaetter lassen sich blind durchtippen, weil
+ * der Knopf des naechsten dort erscheint, wo der Finger gerade war. Die Zahl
+ * zwingt zum Hinsehen und geht mit dem Ziffernblock auch mit Handschuhen.
+ */
+async function katalogLeerenKarte(): Promise<HTMLElement> {
+  const anzahl = await db.artikel.count();
+  const karte = h('div', { class: 'karte' },
+    h('h2', { text: 'Katalog leeren' }),
+    h('p', { text: anzahl
+      ? `Löscht alle ${anzahl} Artikel des Katalogs samt ihrer Codes. Projekte und Scheine bleiben, wie sie sind.`
+      : 'Der Katalog ist leer.' }),
+  );
+  if (!anzahl) return karte;
+
+  const schritt3 = () => {
+    const eingabe = h('input', { type: 'text', inputMode: 'numeric', autocomplete: 'off', placeholder: String(anzahl) });
+    blatt('Letzte Bestätigung', [
+      h('p', { class: 'hinweis', style: 'padding:0', text: `Zum Löschen die Anzahl der Artikel eintippen: ${anzahl}` }),
+      h('label', { class: 'feld' }, eingabe),
+    ], [
+      { text: 'Abbrechen', art: 'zweit' },
+      {
+        text: 'Katalog löschen',
+        art: 'gefahr',
+        tun: async () => {
+          if (eingabe.value.trim() !== String(anzahl)) {
+            melden('Nicht gelöscht', 'Die Zahl stimmte nicht. Der Katalog ist unverändert.');
+            return;
+          }
+          await db.artikel.clear();
+          // Nichts Neues mehr, das in die naechste Sicherung gehoert.
+          zustand.einstellungen = await einstellungenSchreiben({ neueArtikel: 0 });
+          neu();
+          melden('Katalog geleert', `${anzahl} Artikel gelöscht. Selbst angelegte Einheiten bleiben – sie lassen sich oben unter „Einheiten“ entfernen.`);
+        },
+      },
+    ]);
+    setTimeout(() => eingabe.focus(), 50);
+  };
+
+  const schritt2 = () => {
+    blatt('Wirklich alles löschen?', [
+      h('p', { class: 'hinweis', style: 'padding:0',
+        text: 'Das lässt sich nicht rückgängig machen – außer mit einer Sicherung von vorher. Etiketten mit Codes erkennt die App danach nicht mehr.' }),
+    ], [
+      { text: 'Abbrechen', art: 'zweit' },
+      { text: 'Ja, weiter', art: 'gefahr', tun: schritt3 },
+    ]);
+  };
+
+  const schritt1 = async () => {
+    const mitCode = await db.artikel.filter((a) => !!a.codes?.length).count();
+    const e = await einstellungenLesen();
+    blatt('Katalog leeren?', [
+      h('div', { class: 'karte' },
+        h('div', { class: 'paar' }, h('span', { class: 'k', text: 'Artikel' }), h('span', { class: 'v', text: String(anzahl) })),
+        h('div', { class: 'paar' }, h('span', { class: 'k', text: 'davon mit Code' }), h('span', { class: 'v', text: String(mitCode) })),
+        h('div', { class: 'paar' }, h('span', { class: 'k', text: 'Zuletzt gesichert' }),
+          h('span', { class: 'v', text: e.letzteSicherung ? datum(e.letzteSicherung) : 'noch nie' })),
+      ),
+      h('div', { class: 'merk warnung' },
+        h('span', { text: '⚠️' }),
+        h('span', { text: 'Projekte und Scheine bleiben – was dort steht, ist eine Abschrift. Vorher eine Sicherung erstellen, dann lässt sich der Katalog zurückholen.' }),
+      ),
+    ], [
+      { text: 'Abbrechen', art: 'zweit' },
+      { text: 'Weiter', art: 'gefahr', tun: schritt2 },
+    ]);
+  };
+
+  karte.append(h('button', { class: 'knopf gefahr', type: 'button', text: 'Ganzen Katalog löschen…', onclick: () => void schritt1() }));
+  return karte;
 }
 
 // ---------------------------------------------------------------- Lizenz
