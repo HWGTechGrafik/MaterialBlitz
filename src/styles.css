@@ -110,6 +110,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
   align-items: flex-start;
   gap: 10px;
 }
+/* Ab iOS 26 legt das System im Home-Bildschirm-Modus einen Glasschleier
+   ueber den oberen Rand, der rund 20 Punkte unter den Sicherheitsabstand
+   reicht (am Geraet gesehen: Ueberzeile und Knopfkanten verwischt). Darum
+   dort 20 Punkte mehr Luft. Aeltere iOS bekommen sie mit — sauber
+   unterscheiden laesst sich das per CSS nicht. */
+@media (display-mode: standalone) {
+  .kopf { padding-top: calc(30px + env(safe-area-inset-top, 0px)); }
+}
 .kopf-text { min-width: 0; flex: 1; }
 .eyebrow {
   font-size: 11px;
