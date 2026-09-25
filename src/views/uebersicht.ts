@@ -1,8 +1,8 @@
 import { db, einstellungenLesen, einstellungenSchreiben } from '../db';
 import { SICHERUNG_ARTIKEL, SICHERUNG_TAGE, type Baustelle, type Kunde } from '../model';
 import { gehe, neu, zustand } from '../store';
-import { blatt, h, ikon, kopfKnopf, kopfRechts, marke, melden, umschalter, type NeuArt } from '../ui';
-import { artikelBearbeiten } from './katalog';
+import { blatt, h, ikon, kopfKnopf, kopfRechts, marke, melden, umschalter, wischbar, type NeuArt } from '../ui';
+import { artikelBearbeiten, projektLoeschen } from './katalog';
 import { tageSeit } from '../lib/format';
 import { dateiWaehlen } from '../lib/share';
 import { katalogEinlesen, scheinUebernehmen, sicherungEinspielen, vorschau } from '../lib/transfer';
@@ -230,7 +230,7 @@ async function projektListe(): Promise<HTMLElement[]> {
   for (const b of offen) {
     const kunde = b.kundeId ? kundeVon.get(b.kundeId) : undefined;
     const anzahl = zahlen.get(b.id!) ?? 0;
-    teile.push(
+    teile.push(wischbar(
       h(
         'button',
         { class: 'reihe', type: 'button', onclick: () => gehe('schein', b.id!) },
@@ -246,7 +246,8 @@ async function projektListe(): Promise<HTMLElement[]> {
           style: anzahl ? '' : 'background:none;color:var(--ink-muted)',
         }),
       ),
-    );
+      { text: 'Löschen', tun: () => void projektLoeschen(b.id!) },
+    ));
   }
 
   return teile;

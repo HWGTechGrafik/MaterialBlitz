@@ -2,7 +2,7 @@ import { artikelMitCode, db, einstellungenLesen } from '../db';
 import { codeArt, codePruefen, eigenerCode, istEigenerCode } from '../lib/codes';
 import { teilen } from '../lib/share';
 import { neu } from '../store';
-import { blatt, h, kopfKnopf, kopfRechts, melden, umschalter, type NeuArt } from '../ui';
+import { blatt, h, kopfKnopf, kopfRechts, melden, umschalter, wischbar, type NeuArt } from '../ui';
 import { baustelleAnlegen } from './uebersicht';
 
 let reiter: 'katalog' | 'baustellen' = 'katalog';
@@ -310,7 +310,7 @@ async function baustellenListe(rumpf: HTMLElement): Promise<void> {
   }
 
   for (const b of sortiert) {
-    rumpf.append(
+    rumpf.append(wischbar(
       h('button', { class: 'reihe', type: 'button', onclick: () => baustelleBearbeiten(b.id!) },
         h('div', {},
           h('div', { class: 'haupt', text: b.ort }),
@@ -320,7 +320,8 @@ async function baustellenListe(rumpf: HTMLElement): Promise<void> {
         ),
         h('span', { class: 'pfeil', html: '&rsaquo;' }),
       ),
-    );
+      { text: 'Löschen', tun: () => void projektLoeschen(b.id!) },
+    ));
   }
 }
 
@@ -328,7 +329,6 @@ async function baustelleBearbeiten(id: number): Promise<void> {
   const b = await db.baustellen.get(id);
   if (!b) return;
   const kunde = b.kundeId ? await db.kunden.get(b.kundeId) : undefined;
-  const scheine = await db.scheine.where('baustelleId').equals(id).count();
 
   const ort = h('input', { type: 'text', value: b.ort });
   const kundeFeld = h('input', { type: 'text', value: kunde?.name ?? '', placeholder: 'leer = ohne Kunden' });
@@ -362,50 +362,67 @@ async function baustelleBearbeiten(id: number): Promise<void> {
     [
       h('label', { class: 'feld' }, h('span', { text: 'Ort' }), ort),
       h('label', { class: 'feld' }, h('span', { text: 'Kunde' }), kundeFeld),
-      // Ausblenden statt Loeschen, sobald Historie daranhaengt: ein Schein
-      // ohne Baustelle waere ein Zettel ohne Absender.
-      scheine
-        ? h('div', { class: 'merk' },
-            h('span', { text: 'ℹ️' }),
-            h('span', { text: `${scheine} Schein(e) hängen daran. Löschen ist deshalb nicht möglich — „Abschließen" nimmt das Projekt aus der Übersicht, die Historie bleibt.` }),
-          )
-        : h('button', {
-            class: 'knopf gefahr', type: 'button', text: 'Projekt löschen…',
-            onclick: () => {
-              // Rueckfrage im eigenen Blatt: ein Handschuh trifft den roten
-              // Knopf leicht aus Versehen. Eine zufaellige Zahl zum Abtippen
-              // zwingt zum Hinsehen und geht mit dem Ziffernblock auch mit
-              // Handschuhen. Abbrechen fuehrt zurueck ins Projekt.
-              const zahl = String(100 + Math.floor(Math.random() * 900));
-              const eingabe = h('input', { type: 'text', inputMode: 'numeric', autocomplete: 'off', placeholder: zahl });
-              document.querySelector('.schatten')?.remove();
-              blatt(
-                'Projekt löschen?',
-                [
-                  h('p', { class: 'hinweis', style: 'padding:0',
-                    text: `„${b.ort}“${kunde ? ` (${kunde.name})` : ''} wird gelöscht. Das lässt sich nicht rückgängig machen.` }),
-                  h('p', { class: 'hinweis', style: 'padding:0', text: `Zum Löschen diese Zahl eintippen: ${zahl}` }),
-                  h('label', { class: 'feld' }, eingabe),
-                ],
-                [
-                  { text: 'Abbrechen', art: 'zweit', tun: () => void baustelleBearbeiten(id) },
-                  {
-                    text: 'Löschen', art: 'gefahr',
-                    tun: async () => {
-                      if (eingabe.value.trim() !== zahl) {
-                        melden('Nicht gelöscht', 'Die Zahl stimmte nicht. Das Projekt ist unverändert.');
-                        return;
-                      }
-                      await db.baustellen.delete(id);
-                      neu();
-                    },
-                  },
-                ],
-              );
-              setTimeout(() => eingabe.focus(), 50);
-            },
-          }),
+      h('button', {
+        class: 'knopf gefahr', type: 'button', text: 'Projekt löschen…',
+        onclick: () => {
+          document.querySelector('.schatten')?.remove();
+          void projektLoeschen(id, () => void baustelleBearbeiten(id));
+        },
+      }),
     ],
     knoepfe,
   );
+}
+
+/**
+ * Rueckfrage vor dem Loeschen eines Projekts - aus dem Projekt-Blatt und vom
+ * Wischen in den Listen. Ein Handschuh trifft den roten Knopf leicht aus
+ * Versehen: eine zufaellige Zahl zum Abtippen zwingt zum Hinsehen und geht mit
+ * dem Ziffernblock auch mit Handschuhen. Die Scheine gehen mit - die Rueckfrage
+ * nennt deshalb, wie viele Positionen verloren gehen. `zurueck` fuehrt beim
+ * Abbrechen dorthin, woher man kam.
+ */
+export async function projektLoeschen(id: number, zurueck?: () => void): Promise<void> {
+  const b = await db.baustellen.get(id);
+  if (!b) return;
+  const kunde = b.kundeId ? await db.kunden.get(b.kundeId) : undefined;
+  const scheine = await db.scheine.where('baustelleId').equals(id).toArray();
+  const positionen = scheine.reduce((n, s) => n + s.positionen.length, 0);
+
+  const zahl = String(100 + Math.floor(Math.random() * 900));
+  const eingabe = h('input', { type: 'text', inputMode: 'numeric', autocomplete: 'off', placeholder: zahl });
+  blatt(
+    'Projekt löschen?',
+    [
+      h('p', { class: 'hinweis', style: 'padding:0',
+        text: `„${b.ort}“${kunde ? ` (${kunde.name})` : ''} wird gelöscht. Das lässt sich nicht rückgängig machen.` }),
+      // Leere Scheine entstehen beim blossen Oeffnen - die sind keine Warnung wert.
+      positionen
+        ? h('div', { class: 'merk warnung' },
+            h('span', { text: '⚠️' }),
+            h('span', { text: `Mit ${scheine.length === 1 ? 'dem Schein' : `${scheine.length} Scheinen`} gehen ${positionen === 1 ? '1 Position' : `${positionen} Positionen`} verloren.` }),
+          )
+        : null,
+      h('p', { class: 'hinweis', style: 'padding:0', text: `Zum Löschen diese Zahl eintippen: ${zahl}` }),
+      h('label', { class: 'feld' }, eingabe),
+    ],
+    [
+      { text: 'Abbrechen', art: 'zweit', tun: zurueck },
+      {
+        text: 'Löschen', art: 'gefahr',
+        tun: async () => {
+          if (eingabe.value.trim() !== zahl) {
+            melden('Nicht gelöscht', 'Die Zahl stimmte nicht. Das Projekt ist unverändert.');
+            return;
+          }
+          await db.transaction('rw', db.baustellen, db.scheine, async () => {
+            await db.scheine.where('baustelleId').equals(id).delete();
+            await db.baustellen.delete(id);
+          });
+          neu();
+        },
+      },
+    ],
+  );
+  setTimeout(() => eingabe.focus(), 50);
 }

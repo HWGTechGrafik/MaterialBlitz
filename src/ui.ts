@@ -137,6 +137,91 @@ export function langDruck(knopf: HTMLElement, dauer: number, tun: () => void): v
   knopf.addEventListener('contextmenu', (ev) => ev.preventDefault());
 }
 
+/** Die gerade aufgewischte Reihe - es steht hoechstens eine offen. */
+let offeneWischReihe: (() => void) | null = null;
+
+/**
+ * Nach links wischen legt hinter der Reihe einen Knopf frei (etwa "Löschen").
+ * Der Knopf tut noch nichts Endgueltiges - er oeffnet die Rueckfrage. Senkrecht
+ * bleibt die Liste scrollbar; erst eine klar waagrechte Bewegung wischt.
+ * Liefert die Huelle, die statt der Reihe in die Liste kommt.
+ */
+export function wischbar(reihe: HTMLElement, tat: { text: string; tun: () => void }): HTMLElement {
+  const BREITE = 96;
+  const knopf = h('button', {
+    class: 'wisch-tat', type: 'button', text: tat.text, tabIndex: -1,
+    onclick: () => { zu(); tat.tun(); },
+  });
+  const huelle = h('div', { class: 'wisch' }, knopf, reihe);
+
+  let versatz = 0;
+  const setzen = (x: number, gleiten: boolean) => {
+    versatz = x;
+    reihe.style.transition = gleiten ? '' : 'none';
+    reihe.style.transform = x ? `translateX(${x}px)` : '';
+    knopf.tabIndex = x ? 0 : -1;
+  };
+  const zu = () => {
+    setzen(0, true);
+    if (offeneWischReihe === zu) offeneWischReihe = null;
+  };
+
+  let start: { x: number; y: number; von: number; id: number } | null = null;
+  let wischt = false;
+  let gewischt = false;
+
+  reihe.addEventListener('pointerdown', (ev) => {
+    if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+    if (offeneWischReihe && offeneWischReihe !== zu) offeneWischReihe();
+    start = { x: ev.clientX, y: ev.clientY, von: versatz, id: ev.pointerId };
+    wischt = false;
+    gewischt = false;
+  });
+  reihe.addEventListener('pointermove', (ev) => {
+    if (!start || ev.pointerId !== start.id) return;
+    const dx = ev.clientX - start.x;
+    const dy = ev.clientY - start.y;
+    if (!wischt) {
+      // Erst ab 10 px entscheiden, und nur waagrecht: sonst stoert es das Scrollen.
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+      if (Math.abs(dy) >= Math.abs(dx)) { start = null; return; }
+      wischt = true;
+      gewischt = true;
+      reihe.setPointerCapture(ev.pointerId);
+    }
+    setzen(Math.max(-BREITE * 1.4, Math.min(0, start.von + dx)), false);
+  });
+  const loslassen = () => {
+    if (!start) return;
+    start = null;
+    if (!wischt) return;
+    wischt = false;
+    // Der Klick nach dem Wischen kommt sofort - danach gilt Antippen wieder.
+    window.setTimeout(() => { gewischt = false; }, 300);
+    if (versatz < -BREITE / 2) {
+      setzen(-BREITE, true);
+      offeneWischReihe = zu;
+    } else zu();
+  };
+  reihe.addEventListener('pointerup', loslassen);
+  reihe.addEventListener('pointercancel', loslassen);
+
+  // Nach dem Wischen kein Antippen ausloesen; eine offene Reihe schliesst
+  // sich beim Antippen, statt das Projekt zu oeffnen. Auf der Huelle in der
+  // Fangphase, damit es sicher vor dem onclick der Reihe greift.
+  huelle.addEventListener('click', (ev) => {
+    if (ev.target instanceof Node && knopf.contains(ev.target)) return;
+    if (gewischt || versatz) {
+      ev.stopImmediatePropagation();
+      ev.preventDefault();
+      gewischt = false;
+      if (versatz && !wischt) zu();
+    }
+  }, true);
+
+  return huelle;
+}
+
 // ------------------------------------------------------------- Sinnbilder
 
 /**
