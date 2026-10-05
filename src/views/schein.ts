@@ -12,6 +12,7 @@ import { codeNormalisieren, qrLesen } from '../lib/codes';
 import { datum, menge as mengeText, zahl, zeit } from '../lib/format';
 import { csvDatei } from '../lib/csv';
 import { inZwischenablage, teilen } from '../lib/share';
+import { AM_PC, NICHT_MOEGLICH } from '../lib/geraet';
 import { scheinPacken } from '../lib/transfer';
 
 /** Welcher offene Schein gerade bearbeitet wird (eigener oder uebernommener). */
@@ -120,7 +121,7 @@ async function rumpfBauen(
   }
 
   if (!schein.positionen.length) {
-    rumpf.append(h('div', { class: 'leer', text: 'Noch nichts aufgeschrieben. Kachel antippen genügt.' }));
+    rumpf.append(h('div', { class: 'leer', text: `Noch nichts aufgeschrieben. Kachel ${AM_PC ? 'anklicken' : 'antippen'} genügt.` }));
   } else {
     schein.positionen.forEach((p, i) => {
       rumpf.append(
@@ -138,7 +139,7 @@ async function rumpfBauen(
         ),
       );
     });
-    rumpf.append(h('div', { class: 'hinweis', text: 'Position antippen, um Menge zu ändern oder zu löschen.' }));
+    rumpf.append(h('div', { class: 'hinweis', text: `Position ${AM_PC ? 'anklicken' : 'antippen'}, um Menge zu ändern oder zu löschen.` }));
   }
 
   // Kacheln
@@ -155,7 +156,7 @@ async function rumpfBauen(
           class: 'meta',
           html: a.hier ? `${a.einheit} · <b>${a.hier}×</b> hier` : `${a.einheit} · allgemein häufig`,
         }),
-        zaehlbar ? h('span', { class: 'lang', text: 'lang drücken = +1' }) : null,
+        zaehlbar ? h('span', { class: 'lang', text: AM_PC ? 'gedrückt halten = +1' : 'lang drücken = +1' }) : null,
       );
       knopf.onclick = () => {
         if (knopf.dataset.lang === 'ja') { knopf.dataset.lang = ''; return; }
@@ -499,7 +500,7 @@ async function senden(baustelle: Baustelle, kunde: Kunde | undefined, schein: Sc
   const ergebnis = await teilen(dateien);
   if (ergebnis === 'abgebrochen') return;
   if (ergebnis === 'nicht-moeglich') {
-    melden('Teilen nicht möglich', 'Dieses Gerät bietet keinen Teilen-Dialog für Dateien an.');
+    melden(...NICHT_MOEGLICH);
     return;
   }
 
@@ -508,6 +509,12 @@ async function senden(baustelle: Baustelle, kunde: Kunde | undefined, schein: Sc
   await db.scheine.update(schein.id!, { zustand: 'geteilt', beendet: stand.beendet });
   scheinZuruecksetzen();
   neu();
+  // Am PC gibt es keinen Teilen-Dialog, der die Mail gleich oeffnet - also
+  // sagen, wo die Dateien liegen und wie es weitergeht.
+  if (AM_PC) {
+    melden('Gespeichert', 'CSV und PDF liegen im Download-Ordner – beide an die Mail ans Büro anhängen.'
+      + (buero ? ' Die Adresse des Büros ist in der Zwischenablage: in der Mail ins An-Feld klicken, Strg+V.' : ''));
+  }
 }
 
 function mehr(baustelle: Baustelle, kunde: Kunde | undefined, schein: Schein): void {
@@ -558,6 +565,9 @@ async function uebergeben(baustelle: Baustelle, kunde: Kunde | undefined, schein
   await db.scheine.update(schein.id!, { zustand: 'uebergeben', beendet: Date.now() });
   scheinZuruecksetzen();
   neu();
+  if (AM_PC) {
+    melden('Gespeichert', 'Die Datei liegt im Download-Ordner. Dem Kollegen per Mail schicken – er liest sie über „Datei einlesen" ein.');
+  }
 }
 
 // ------------------------------------------------------------- Historie

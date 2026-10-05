@@ -1,6 +1,7 @@
 import { artikelMitCode, db, einstellungenLesen } from '../db';
 import { codeArt, codePruefen, eigenerCode, istEigenerCode } from '../lib/codes';
 import { teilen } from '../lib/share';
+import { AM_PC, NICHT_MOEGLICH } from '../lib/geraet';
 import { neu } from '../store';
 import { blatt, h, kopfKnopf, kopfRechts, melden, umschalter, wischbar, type NeuArt } from '../ui';
 import { baustelleAnlegen } from './uebersicht';
@@ -288,9 +289,14 @@ async function etikettenDrucken(vorauswahl: number[] = []): Promise<void> {
           const b = BOEGEN.find((x) => x.id === bogen.value) ?? BOEGEN[0]!;
           const ergebnis = await teilen([etikettenPdf(etiketten, b, Number(erstes.value) || 1)]);
           if (ergebnis === 'nicht-moeglich') {
-            melden('Teilen nicht möglich', 'Dieses Gerät bietet keinen Teilen-Dialog für Dateien an.');
+            melden(...NICHT_MOEGLICH);
           }
           neu();
+          // Skaliert der Drucker die Seite, sitzen die Etiketten neben den
+          // Feldern des Bogens.
+          if (ergebnis === 'geteilt' && AM_PC) {
+            melden('Gespeichert', 'Das PDF liegt im Download-Ordner. Beim Drucken „Tatsächliche Größe" wählen, nicht „An Seite anpassen" – sonst sitzen die Etiketten neben den Feldern.');
+          }
         },
       },
     ],

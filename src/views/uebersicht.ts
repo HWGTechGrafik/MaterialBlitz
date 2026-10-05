@@ -5,6 +5,7 @@ import { blatt, h, ikon, kopfKnopf, kopfRechts, marke, melden, umschalter, wisch
 import { artikelBearbeiten, projektLoeschen } from './katalog';
 import { tageSeit } from '../lib/format';
 import { dateiWaehlen } from '../lib/share';
+import { AM_PC } from '../lib/geraet';
 import { katalogEinlesen, scheinUebernehmen, sicherungEinspielen, vorschau } from '../lib/transfer';
 import {
   durchsuchen, suchAktiv, suchBegriffe, zerlegen, type Fund, type FundArt,
@@ -223,7 +224,7 @@ async function projektListe(): Promise<HTMLElement[]> {
 
   if (!offen.length) {
     teile.push(
-      h('div', { class: 'leer', text: 'Noch kein Projekt. Oben rechts mit dem Plus anlegen — danach tippst du es nur noch an.' }),
+      h('div', { class: 'leer', text: `Noch kein Projekt. Oben rechts mit dem Plus anlegen — danach ${AM_PC ? 'klickst' : 'tippst'} du es nur noch an.` }),
     );
   }
 
@@ -276,7 +277,9 @@ async function sicherungFaellig(): Promise<HTMLElement | null> {
       'span',
       {},
       h('b', { text: 'Sicherung fällig. ' }),
-      `${grund} Das Handy sichert die App nicht von selbst — ohne Sicherung ist dein Archiv bei Geräteverlust weg.`,
+      AM_PC
+        ? `${grund} Das Archiv liegt nur auf diesem Rechner — ohne Sicherung ist es weg, wenn er ausfällt.`
+        : `${grund} Das Handy sichert die App nicht von selbst — ohne Sicherung ist dein Archiv bei Geräteverlust weg.`,
       h('br'),
       h('button', {
         class: 'knopf leise',
@@ -370,12 +373,14 @@ async function einlesen(): Promise<void> {
       'Ins Archiv übernehmen?',
       [
         h('div', { class: 'karte' },
-          zeile('Grundstock', v.titel),
+          v.massgeblich ? zeile('Archiv von', v.absender) : zeile('Grundstock', v.titel),
           zeile('Artikel', String(v.artikel)),
           zeile('Erstellt', v.zeitpunkt),
         ),
         h('p', { class: 'hinweis', style: 'padding:0',
-          text: 'Fehlende Artikel kommen ins Archiv dazu. Was schon da ist, bleibt, wie es ist – nichts wird gelöscht.' }),
+          text: v.massgeblich
+            ? 'Fehlende Artikel kommen dazu. Gleichnamige übernehmen Einheit und Codes aus der Datei. Was nur hier steht, bleibt – nichts wird gelöscht.'
+            : 'Fehlende Artikel kommen ins Archiv dazu. Was schon da ist, bleibt, wie es ist – nichts wird gelöscht.' }),
       ],
       [
         { text: 'Abbrechen', art: 'zweit' },
@@ -385,9 +390,11 @@ async function einlesen(): Promise<void> {
             const r = await katalogEinlesen(v.umschlag);
             zustand.einstellungen = await einstellungenLesen();
             neu();
-            melden('Ins Archiv übernommen', r.vorhanden
-              ? `${r.neu} Artikel neu im Archiv, ${r.vorhanden} waren schon da.`
-              : `${r.neu} Artikel neu im Archiv.`);
+            const teile = [`${r.neu} Artikel neu im Archiv`];
+            if (r.angeglichen) teile.push(`${r.angeglichen} angeglichen`);
+            const gleich = r.vorhanden - r.angeglichen;
+            if (gleich) teile.push(v.massgeblich ? `${gleich} unverändert` : `${gleich} waren schon da`);
+            melden('Ins Archiv übernommen', `${teile.join(', ')}.`);
           },
         },
       ],

@@ -32,9 +32,17 @@ export interface Umschlag {
   katalog?: {
     /** Wofuer der Grundstock gedacht ist, etwa "Elektro". */
     titel: string;
-    artikel: Array<{ name: string; einheit: string }>;
+    /** Codes nur im weitergegebenen Archiv; der Grundstock hat keine. */
+    artikel: Array<{ name: string; einheit: string; codes?: string[] }>;
     /** Einheiten, die die Artikel brauchen und die feste Liste nicht hat. */
     einheiten: string[];
+    /**
+     * Gesetzt, wenn ein Geraet sein Archiv weitergibt: Dann ist die Datei
+     * der gepflegte Stand, und gleichnamige Artikel uebernehmen Einheit und
+     * Codes. Ein Grundstock dagegen ergaenzt nur. Aeltere Fassungen der App
+     * kennen das Feld nicht und ergaenzen ebenfalls nur - kein Schaden.
+     */
+    massgeblich?: true;
   };
 }
 
@@ -93,13 +101,48 @@ export async function sicherungPacken(): Promise<File> {
   return zuDatei(umschlag, name);
 }
 
+// ------------------------------------------------------------------- Archiv
+
+/**
+ * Nur das Archiv weitergeben: Artikel mit Einheit und Codes, ohne Projekte,
+ * Kunden und Einstellungen. Gedacht fuer den Weg PC -> Handy (am PC wird
+ * gepflegt und werden Etiketten gedruckt) und zurueck (auf der Baustelle
+ * neu angelegte Artikel). Die Codes muessen mit, sonst erkennt das andere
+ * Geraet die gedruckten Etiketten nicht.
+ */
+export async function archivPacken(absender: string | undefined): Promise<File> {
+  const artikel = await db.artikel.orderBy('name').toArray();
+  const umschlag: Umschlag = {
+    mblitz: 1,
+    typ: 'katalog',
+    erzeugt: Date.now(),
+    absender,
+    katalog: {
+      titel: 'Archiv',
+      massgeblich: true,
+      artikel: artikel.map((a) => ({
+        name: a.name,
+        einheit: a.einheit,
+        ...(a.codes?.length ? { codes: a.codes } : {}),
+      })),
+      einheiten: [...new Set(artikel.map((a) => a.einheit))],
+    },
+  };
+  const name = `MaterialBlitz_Archiv_${datumSortierbar(umschlag.erzeugt)}.txt`;
+  return zuDatei(umschlag, name);
+}
+
 // ------------------------------------------------------------------- Lesen
 
 export type Vorschau =
   | { art: 'fehler'; text: string }
   | { art: 'schein'; umschlag: Umschlag; ort: string; positionen: number; absender: string; zeitpunkt: string }
   | { art: 'sicherung'; umschlag: Umschlag; artikel: number; baustellen: number; scheine: number; zeitpunkt: string }
-  | { art: 'katalog'; umschlag: Umschlag; titel: string; artikel: number; zeitpunkt: string };
+  | {
+    art: 'katalog'; umschlag: Umschlag; titel: string; artikel: number; zeitpunkt: string;
+    /** Weitergegebenes Archiv statt Grundstock, samt Absender. */
+    massgeblich: boolean; absender: string;
+  };
 
 /**
  * Datei ansehen, **bevor** etwas uebernommen wird. Nie still einlesen — sonst
@@ -142,6 +185,8 @@ export function vorschau(text: string): Vorschau {
       titel: u.katalog.titel,
       artikel: u.katalog.artikel.length,
       zeitpunkt,
+      massgeblich: u.katalog.massgeblich === true,
+      absender: u.absender || 'unbekannt',
     };
   }
   return { art: 'fehler', text: 'Der Inhalt der Datei ist unvollständig.' };
@@ -266,22 +311,58 @@ export async function sicherungEinspielen(
  * Einheiten kommen in die Liste, sonst waere die Einheit beim Bearbeiten des
  * Artikels nicht waehlbar und fiele still auf die erste zurueck.
  *
+ * Ein weitergegebenes Archiv (`massgeblich`) gleicht ausserdem an:
+ * gleichnamige Artikel uebernehmen Einheit und Codes der Datei. Geloescht
+ * wird auch dann nichts - was nur hier steht, bleibt. Codes kommen zu den
+ * eigenen dazu; haengt einer hier an einem anderen Artikel, wandert er
+ * herueber, denn ein Code gehoert hoechstens einem.
+ *
+ * Bestehende Scheine beruehrt das nicht: ihre Positionen sind Abschriften.
+ *
  * Zaehlt nicht als Sicherung und nicht als neue Artikel fuer die Erinnerung:
  * der Grundstock laesst sich jederzeit aus derselben Datei wiederholen.
  */
-export async function katalogEinlesen(u: Umschlag): Promise<{ neu: number; vorhanden: number }> {
+export async function katalogEinlesen(
+  u: Umschlag,
+): Promise<{ neu: number; angeglichen: number; vorhanden: number }> {
   const k = u.katalog!;
   let neu = 0;
+  let angeglichen = 0;
   await db.transaction('rw', [db.artikel, db.einstellungen], async () => {
     const e = await einstellungenLesen();
     const fehlend = k.einheiten.filter((x) => !e.einheiten.includes(x));
     if (fehlend.length) await einstellungenSchreiben({ einheiten: [...e.einheiten, ...fehlend] });
 
     for (const a of k.artikel) {
-      if (await db.artikel.where('name').equals(a.name).first()) continue;
-      await db.artikel.add({ name: a.name, einheit: a.einheit, anzahl: 0 });
-      neu++;
+      const da = await db.artikel.where('name').equals(a.name).first();
+      if (!k.massgeblich) {
+        if (da) continue;
+        await db.artikel.add({ name: a.name, einheit: a.einheit, anzahl: 0 });
+        neu++;
+        continue;
+      }
+
+      const mitgebracht = a.codes ?? [];
+      for (const c of mitgebracht) {
+        const traeger = await db.artikel.where('codes').equals(c).first();
+        if (traeger && traeger.id !== da?.id) {
+          await db.artikel.update(traeger.id!, { codes: (traeger.codes ?? []).filter((x) => x !== c) });
+        }
+      }
+      if (!da) {
+        await db.artikel.add({
+          name: a.name, einheit: a.einheit, anzahl: 0,
+          ...(mitgebracht.length ? { codes: [...mitgebracht] } : {}),
+        });
+        neu++;
+        continue;
+      }
+      const codes = [...new Set([...(da.codes ?? []), ...mitgebracht])];
+      if (da.einheit !== a.einheit || codes.length !== (da.codes?.length ?? 0)) {
+        await db.artikel.update(da.id!, { einheit: a.einheit, codes });
+        angeglichen++;
+      }
     }
   });
-  return { neu, vorhanden: k.artikel.length - neu };
+  return { neu, angeglichen, vorhanden: k.artikel.length - neu };
 }

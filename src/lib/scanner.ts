@@ -1,6 +1,7 @@
 import { prepareZXingModule, readBarcodes, type ReadInputBarcodeFormat } from 'zxing-wasm/reader';
 import wasmAdresse from 'zxing-wasm/reader/zxing_reader.wasm?url';
 import { h } from '../ui';
+import { AM_PC } from './geraet';
 
 /**
  * Strich- und QR-Codes mit der Kamera lesen. Safari bringt keinen
@@ -118,7 +119,9 @@ export function scannen(): Promise<string | null> {
       } catch (e) {
         const name = (e as DOMException).name;
         fehler(name === 'NotAllowedError'
-          ? 'Kamera nicht erlaubt. In den iPhone-Einstellungen unter Safari › Kamera freigeben – oder den Code im Archiv abtippen.'
+          ? AM_PC
+            ? 'Kamera nicht erlaubt. In den Windows-Einstellungen unter Datenschutz › Kamera den Zugriff für Desktop-Apps freigeben – oder den Code im Archiv abtippen.'
+            : 'Kamera nicht erlaubt. In den iPhone-Einstellungen unter Safari › Kamera freigeben – oder den Code im Archiv abtippen.'
           : `Kamera nicht verfügbar (${name}). Den Code im Archiv abtippen.`);
         return;
       }

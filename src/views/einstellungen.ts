@@ -7,7 +7,8 @@ import { datumText } from '../lib/lizenz';
 import { fassungsZeile } from '../lib/fassung';
 
 import { teilen } from '../lib/share';
-import { sicherungPacken } from '../lib/transfer';
+import { AM_PC, NICHT_MOEGLICH } from '../lib/geraet';
+import { archivPacken, sicherungPacken } from '../lib/transfer';
 
 export async function einstellungenView(): Promise<HTMLElement[]> {
   const e = await einstellungenLesen();
@@ -53,7 +54,9 @@ export async function einstellungenView(): Promise<HTMLElement[]> {
     melden(
       'Gespeichert',
       adresse
-        ? 'Beim Senden liegt die Adresse in der Zwischenablage: in der Mail auf das An-Feld tippen, lange drücken, einsetzen.'
+        ? AM_PC
+          ? 'Beim Senden liegt die Adresse in der Zwischenablage: in der Mail ins An-Feld klicken, Strg+V.'
+          : 'Beim Senden liegt die Adresse in der Zwischenablage: in der Mail auf das An-Feld tippen, lange drücken, einsetzen.'
         : 'Es wird keine Adresse mehr kopiert.',
     );
   };
@@ -72,12 +75,15 @@ export async function einstellungenView(): Promise<HTMLElement[]> {
       // dem PDF, sie betrifft nur den Weg dorthin.
       h('div', { class: 'karte' },
         h('h2', { text: 'Ans Büro' }),
-        h('p', { text: 'Der Teilen-Dialog des Handys kennt kein Empfängerfeld — Anhänge und Adressfelder schließen einander aus. Darum legt die App die Adresse beim Senden in die Zwischenablage; in der Mail ist sie dann nur noch ins An-Feld einzusetzen. Ab der zweiten Mail schlägt das Handy sie ohnehin selbst vor.' }),
+        h('p', { text: AM_PC
+          ? 'Am PC legt die App CSV und PDF im Download-Ordner ab; von dort kommen sie als Anhang in die Mail. Die Adresse liegt beim Senden in der Zwischenablage und ist im An-Feld nur noch einzufügen.'
+          : 'Der Teilen-Dialog des Handys kennt kein Empfängerfeld — Anhänge und Adressfelder schließen einander aus. Darum legt die App die Adresse beim Senden in die Zwischenablage; in der Mail ist sie dann nur noch ins An-Feld einzusetzen. Ab der zweiten Mail schlägt das Handy sie ohnehin selbst vor.' }),
         buero.knoten,
         h('button', { class: 'knopf', type: 'button', text: 'Speichern', onclick: bueroSpeichern }),
       ),
 
       await sicherungKarte(),
+      archivKarte(),
       einheitenKarte(e.einheiten),
       await katalogLeerenKarte(),
       lizenzKarte(),
@@ -98,7 +104,7 @@ async function sicherungKarte(): Promise<HTMLElement> {
   return h('div', { class: 'karte' },
     h('h2', { text: 'Sicherung' }),
     h('p', {
-      text: 'Enthält alles: Archiv, Kunden, Projekte, Firmenkopf und die Historie. Dieselbe Datei richtet auch ein neues Handy ein.',
+      text: `Enthält alles: Archiv, Kunden, Projekte, Firmenkopf und die Historie. Dieselbe Datei richtet auch ${AM_PC ? 'einen neuen Rechner' : 'ein neues Handy'} ein.`,
     }),
     h('div', { class: 'paar' },
       h('span', { class: 'k', text: 'Zuletzt gesichert' }),
@@ -116,10 +122,45 @@ async function sicherungKarte(): Promise<HTMLElement> {
         if (ergebnis !== 'geteilt') return;
         zustand.einstellungen = await einstellungenSchreiben({ letzteSicherung: Date.now(), neueArtikel: 0 });
         neu();
+        if (AM_PC) {
+          melden('Gesichert', 'Die Sicherung liegt im Download-Ordner. Am besten auf einen USB-Stick oder ein Netzlaufwerk kopieren – fällt der Rechner aus, ist sie sonst mit weg.');
+        }
       },
     }),
     h('p', { style: 'margin-top:8px',
       text: 'Einlesen geht über „Datei einlesen" in der Projekt-Übersicht — dort, wo auch übergebene Scheine ankommen.' }),
+  );
+}
+
+// -------------------------------------------------------- Archiv weitergeben
+
+/**
+ * Nur das Archiv an ein anderes Geraet: am PC gepflegt und Etiketten
+ * gedruckt, dann aufs Handy - oder auf der Baustelle Angelegtes zurueck.
+ * Anders als die Sicherung ohne Projekte und Scheine, damit beim Empfaenger
+ * keine fremden Projekte auftauchen.
+ */
+function archivKarte(): HTMLElement {
+  return h('div', { class: 'karte' },
+    h('h2', { text: 'Archiv weitergeben' }),
+    h('p', {
+      text: `Nur das Archiv – Artikel mit Einheit und Codes, ohne Projekte. ${AM_PC ? 'Am Handy' : 'Am anderen Gerät'} über „Datei einlesen" im Dashboard übernehmen: Neue Artikel kommen dazu, gleichnamige übernehmen Einheit und Codes, gelöscht wird nichts.`,
+    }),
+    h('button', {
+      class: 'knopf zweit', type: 'button', text: 'Archiv weitergeben', style: 'margin-top:10px',
+      onclick: async () => {
+        if (!(await db.artikel.count())) {
+          melden('Archiv leer', 'Im Archiv steht noch kein Artikel.');
+          return;
+        }
+        const e = await einstellungenLesen();
+        const ergebnis = await teilen([await archivPacken(e.firma.name || undefined)]);
+        if (ergebnis === 'nicht-moeglich') melden(...NICHT_MOEGLICH);
+        if (ergebnis === 'geteilt' && AM_PC) {
+          melden('Gespeichert', 'Die Datei liegt im Download-Ordner. Ans Handy schicken (Mail, WhatsApp …) und dort über „Datei einlesen" im Dashboard übernehmen.');
+        }
+      },
+    }),
   );
 }
 
@@ -153,7 +194,7 @@ function einheitenKarte(einheiten: string[]): HTMLElement {
 
   return h('div', { class: 'karte' },
     h('h2', { text: 'Einheiten' }),
-    h('p', { text: 'Die festen lassen sich nicht entfernen, eigene schon — antippen.' }),
+    h('p', { text: `Die festen lassen sich nicht entfernen, eigene schon — ${AM_PC ? 'anklicken' : 'antippen'}.` }),
     liste,
     h('button', {
       class: 'knopf zweit', type: 'button', text: 'Einheit hinzufügen',

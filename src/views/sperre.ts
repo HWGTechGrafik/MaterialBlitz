@@ -3,6 +3,7 @@ import { neu, zustand } from '../store';
 import { h, marke } from '../ui';
 import { pruefen, saeubern } from '../lib/lizenz';
 import { dateiWaehlen } from '../lib/share';
+import { AM_PC } from '../lib/geraet';
 
 /**
  * Sperrbildschirm. Ohne gueltigen Schluessel laeuft nichts — kein Anlegen,
@@ -77,7 +78,9 @@ export function sperreView(): HTMLElement[] {
       } catch {
         // Kein Zugriff erlaubt oder nichts drin: dann wird von Hand
         // eingefuegt, das Feld steht ja da.
-        meldung.textContent = 'Einfügen ging nicht — bitte lange auf das Feld drücken und „Einsetzen" wählen.';
+        meldung.textContent = AM_PC
+          ? 'Einfügen ging nicht — bitte ins Feld klicken und Strg+V drücken.'
+          : 'Einfügen ging nicht — bitte lange auf das Feld drücken und „Einsetzen" wählen.';
         meldung.className = 'meldung';
       }
     },
