@@ -6,7 +6,7 @@ import {
   istZaehlbar, positionHinzufuegen, runden,
   type Artikel, type Baustelle, type Kunde, type Position, type Schein,
 } from '../model';
-import { gehe, neu, zustand } from '../store';
+import { benutzer, gehe, neu, zustand } from '../store';
 import { blatt, h, ikon, kopfKnopf, kopfRechts, langDruck, melden } from '../ui';
 import { codeNormalisieren, qrLesen } from '../lib/codes';
 import { datum, menge as mengeText, zahl, zeit } from '../lib/format';
@@ -495,7 +495,11 @@ async function senden(baustelle: Baustelle, kunde: Kunde | undefined, schein: Sc
   // statt mitschleppen: der Start auf der Baustelle bleibt leicht, und der
   // Service Worker hat die Datei trotzdem im Vorrat.
   const { pdfDatei } = await import('../lib/pdf');
-  const dateien = [csvDatei(stand, baustelle, kunde), pdfDatei(stand, baustelle, e.firma, kunde)];
+  const ich = benutzer();
+  const dateien = [
+    csvDatei(stand, baustelle, kunde, ich),
+    pdfDatei(stand, baustelle, e.firma, kunde, ich),
+  ];
 
   const ergebnis = await teilen(dateien);
   if (ergebnis === 'abgebrochen') return;
@@ -556,7 +560,9 @@ function bezeichnen(schein: Schein): void {
 
 async function uebergeben(baustelle: Baustelle, kunde: Kunde | undefined, schein: Schein): Promise<void> {
   const e = await einstellungenLesen();
-  const absender = e.firma.name || 'MaterialBlitz';
+  // Der Name aus der Lizenz sagt dem Kollegen mehr als der Firmenname, den
+  // im Betrieb alle gleich eingetragen haben.
+  const absender = benutzer() || e.firma.name || 'MaterialBlitz';
   const datei = await scheinPacken(schein, baustelle, kunde, absender);
 
   const ergebnis = await teilen([datei]);

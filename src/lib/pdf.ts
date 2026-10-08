@@ -26,6 +26,7 @@ export function pdfErzeugen(
   baustelle: Baustelle,
   firma: Firma,
   kunde?: Kunde,
+  ersteller = '',
 ): jsPDF {
   // compress steht sonst auf false — derselbe Schein waere achtmal so gross.
   const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
@@ -43,8 +44,11 @@ export function pdfErzeugen(
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(...GRAU);
+    // Auf jeder Seite, nicht nur im Kasten der ersten: eine einzelne
+    // ausgedruckte Folgeseite soll auch sagen, von wem sie stammt.
+    const von = ersteller ? ` von ${ersteller}` : '';
     doc.text(
-      `${zeilen.length} Positionen · erzeugt am ${datum(stand)} um ${zeit(stand)} Uhr mit MaterialBlitz`,
+      `${zeilen.length} Positionen · erzeugt am ${datum(stand)} um ${zeit(stand)} Uhr${von} mit MaterialBlitz`,
       15, h - 9,
     );
     doc.text(`Seite ${seite}`, breite - 15, h - 9, { align: 'right' });
@@ -92,7 +96,7 @@ export function pdfErzeugen(
     const ky = 36;
     doc.setDrawColor(...LINIE);
     doc.setLineWidth(0.3);
-    doc.roundedRect(kx, ky, 75, 30, 1.5, 1.5);
+    doc.roundedRect(kx, ky, 75, 36, 1.5, 1.5);
     const paare: Array<[string, string]> = [
       // Im PDF ausgeschrieben — anders als im CSV, wo die Spalte leer bleibt.
       // Das Blatt liest ein Mensch.
@@ -101,6 +105,8 @@ export function pdfErzeugen(
       ['Baustelle', baustelle.ort],
       ['Bereich', schein.bezeichnung || '—'],
       ['Datum', `${datum(stand)}, ${zeit(stand)}`],
+      // Der Name aus der Lizenz — wer den Schein ans Buero schickt.
+      ['Erstellt von', ersteller || '—'],
     ];
     let y = ky + 6.5;
     for (const [k, v] of paare) {
@@ -137,7 +143,7 @@ export function pdfErzeugen(
   autoTable(doc, {
     head: [['Pos', 'Material', 'Menge', 'Einheit']],
     body: zeilen,
-    startY: 72,
+    startY: 78,
     margin: { top: 22, left: 15, right: 15, bottom: 20 },
     styles: {
       font: 'helvetica', fontSize: 10, cellPadding: 2.2,
@@ -171,8 +177,8 @@ export function pdfDateiname(schein: Schein, baustelle: Baustelle): string {
 }
 
 export function pdfDatei(
-  schein: Schein, baustelle: Baustelle, firma: Firma, kunde?: Kunde,
+  schein: Schein, baustelle: Baustelle, firma: Firma, kunde?: Kunde, ersteller = '',
 ): File {
-  const blob = pdfErzeugen(schein, baustelle, firma, kunde).output('blob');
+  const blob = pdfErzeugen(schein, baustelle, firma, kunde, ersteller).output('blob');
   return new File([blob], pdfDateiname(schein, baustelle), { type: 'application/pdf' });
 }

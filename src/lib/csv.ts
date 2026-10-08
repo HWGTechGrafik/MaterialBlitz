@@ -6,6 +6,8 @@ import { datum, dateinameTeil, datumSortierbar, menge, zeit, zeitKompakt } from 
 const SPALTEN = [
   'Datum', 'Zeit', 'Kunde', 'Baustelle', 'Bereich',
   'Material', 'Menge', 'Einheit', 'Nachtrag',
+  // Hinten angehaengt, damit bestehende Vorlagen im Buero weiter passen.
+  'Erstellt von',
 ] as const;
 
 /**
@@ -16,7 +18,9 @@ function feld(wert: string): string {
   return /[;"\r\n]/.test(wert) ? `"${wert.replace(/"/g, '""')}"` : wert;
 }
 
-export function csvErzeugen(schein: Schein, baustelle: Baustelle, kunde?: Kunde): string {
+export function csvErzeugen(
+  schein: Schein, baustelle: Baustelle, kunde?: Kunde, ersteller = '',
+): string {
   const stand = schein.beendet ?? Date.now();
   const kopf = [
     datum(stand),
@@ -35,7 +39,7 @@ export function csvErzeugen(schein: Schein, baustelle: Baustelle, kunde?: Kunde)
     // untereinanderkopieren, filtern und summieren kann. Keine Summenzeile —
     // die zerstoert jeden Filter.
     ...schein.positionen.map((p) =>
-      [...kopf, p.name, menge(p.menge), p.einheit, nachtrag].map(feld).join(';'),
+      [...kopf, p.name, menge(p.menge), p.einheit, nachtrag, ersteller].map(feld).join(';'),
     ),
   ];
 
@@ -56,8 +60,10 @@ export function csvDateiname(schein: Schein, baustelle: Baustelle): string {
   return teile.join('_') + '.csv';
 }
 
-export function csvDatei(schein: Schein, baustelle: Baustelle, kunde?: Kunde): File {
-  return new File([csvErzeugen(schein, baustelle, kunde)], csvDateiname(schein, baustelle), {
+export function csvDatei(
+  schein: Schein, baustelle: Baustelle, kunde?: Kunde, ersteller = '',
+): File {
+  return new File([csvErzeugen(schein, baustelle, kunde, ersteller)], csvDateiname(schein, baustelle), {
     type: 'text/csv',
   });
 }

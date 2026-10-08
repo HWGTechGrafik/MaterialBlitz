@@ -45,3 +45,11 @@ export function gehe(ansicht: Ansicht, baustelleId?: number): void {
 export function freigeschaltet(): boolean {
   return Boolean(zustand.lizenz);
 }
+
+/**
+ * Wer mit der App arbeitet: der Name, auf den die Lizenz ausgestellt ist.
+ * Er steht auf PDF und CSV und im Dashboard. Leer nur vor der Freischaltung.
+ */
+export function benutzer(): string {
+  return zustand.lizenz?.betrieb ?? '';
+}
