@@ -34,7 +34,7 @@ import { neu, zustand } from '../store';
 import { blatt, h, melden } from '../ui';
 import { zeit } from './format';
 import { AM_PC } from './geraet';
-import { pruefen } from './lizenz';
+import { pruefen, type Lizenz } from './lizenz';
 import * as dbx from './dropbox';
 import { sicherungEinspielen, sicherungUmschlag, type Umschlag } from './transfer';
 
@@ -42,6 +42,8 @@ const K_BASIS = 'mb.sync.basis';
 const K_REV = 'mb.sync.rev';
 const K_OFFEN = 'mb.sync.offen';
 const K_ZULETZT = 'mb.sync.zuletzt';
+/** rev der Datei oben und hiesiger Schluessel beim letzten vollstaendigen Vergleich. */
+const K_GEPRUEFT = 'mb.sync.geprueft';
 const MINUTE = 60_000;
 
 function lesen(k: string): string | null {
@@ -85,9 +87,18 @@ function basis(): number | null {
     return null;
   }
 }
+/**
+ * Merkmal fuer die Minutenpruefung: dieselbe Datei oben (rev) **und**
+ * derselbe Schluessel hier. Aendert sich eines davon, wird wieder ganz
+ * verglichen — sonst bliebe unbemerkt, dass oben ein schlechterer
+ * Schluessel liegt als hier.
+ */
+const merkmal = (rev: string): string => `${rev}|${zustand.einstellungen?.lizenz ?? ''}`;
+
 function basisSetzen(stand: number, rev: string | null): void {
   setzen(K_BASIS, JSON.stringify({ datei: pfad(), stand }));
   setzen(K_REV, rev);
+  setzen(K_GEPRUEFT, rev ? merkmal(rev) : null);
   setzen(K_ZULETZT, String(Date.now()));
 }
 
@@ -195,7 +206,7 @@ async function hochladen(ueberschreiben = false): Promise<boolean> {
 }
 
 /** Den Stand aus der Dropbox einspielen; `zusammen` fuegt hinzu statt zu ersetzen. */
-async function einspielen(u: Umschlag, rev: string | null, zusammen = false): Promise<void> {
+async function einspielen(u: Umschlag, rev: string | null, zusammen = false, schluesselHinauf = false): Promise<void> {
   unterdrueckt = true;
   try {
     await sicherungEinspielen(u, zusammen ? 'zusammenfuehren' : 'ersetzen');
@@ -203,8 +214,8 @@ async function einspielen(u: Umschlag, rev: string | null, zusammen = false): Pr
     unterdrueckt = false;
   }
   basisSetzen(u.erzeugt, rev);
-  if (zusammen) {
-    // Hier steht jetzt beides — das gehoert wieder hinauf.
+  if (zusammen || schluesselHinauf) {
+    // Hier steht jetzt beides bzw. der bessere Schluessel — das gehoert wieder hinauf.
     aenderungen++;
     setzen(K_OFFEN, '1');
   } else {
@@ -212,36 +223,58 @@ async function einspielen(u: Umschlag, rev: string | null, zusammen = false): Pr
   }
   zustand.einstellungen = await einstellungenLesen();
   neu();
-  if (zusammen) await hochladen();
+  // Zusammengefuehrtes gehoert wieder hinauf — ebenso der eigene Schluessel,
+  // wenn er besser ist als der oben (die Daten wurden ersetzt, er nicht).
+  if (zusammen || schluesselHinauf) await hochladen();
 }
 
 /**
- * Den Schluessel aus der Sync-Datei uebernehmen, wenn er dieselbe Nummer hat
- * und besser ist: einer mit Firma gegen einen ohne, sonst der spaeter
- * eingesetzte. Einen Schluessel mit Firma ersetzt nie einer ohne.
+ * Welcher Schluessel ist besser, der hiesige oder der in der Sync-Datei?
+ * Firma schlaegt Zeitpunkt: einer mit Firma gewinnt immer gegen einen ohne,
+ * auch wenn der alte spaeter eingegeben wurde. Sonst gewinnt der spaeter
+ * eingesetzte. Ein fehlender, ungueltiger oder fremder Schluessel oben
+ * zaehlt nicht — dann ist der hiesige besser.
+ *
+ * Die Reihenfolge ist auf beiden Geraeten dieselbe: Was das eine als
+ * „hier besser" hinaufschiebt, sieht das andere als „dort besser" und
+ * uebernimmt es. Bei echtem Gleichstand passiert nichts.
  */
-async function lizenzAngleichen(u: Umschlag): Promise<boolean> {
-  const fremd = u.lizenz;
+async function lizenzVergleichen(u: Umschlag): Promise<
+  { wer: 'hier' | 'gleich' } | { wer: 'dort'; schluessel: string; gesetzt: number; lizenz: Lizenz }
+> {
   const e = zustand.einstellungen ?? await einstellungenLesen();
-  if (!fremd?.schluessel || fremd.schluessel === e.lizenz || !zustand.lizenz) return false;
+  if (!zustand.lizenz || !e.lizenz) return { wer: 'gleich' };
+  const fremd = u.lizenz;
+  if (!fremd?.schluessel) return { wer: 'hier' };
+  if (fremd.schluessel === e.lizenz) return { wer: 'gleich' };
   const ergebnis = await pruefen(fremd.schluessel);
-  if (!ergebnis.ok || ergebnis.lizenz.nummer !== zustand.lizenz.nummer) return false;
-  // Firma schlaegt Zeitpunkt: ein Schluessel mit Firma ersetzt immer einen
-  // ohne und nie umgekehrt — auch wenn der alte spaeter eingegeben wurde.
+  if (!ergebnis.ok || ergebnis.lizenz.nummer !== zustand.lizenz.nummer) return { wer: 'hier' };
+  const dort = { wer: 'dort' as const, schluessel: fremd.schluessel, gesetzt: fremd.gesetzt ?? 0, lizenz: ergebnis.lizenz };
   const hierFirma = Boolean(zustand.lizenz.firma);
   const dortFirma = Boolean(ergebnis.lizenz.firma);
-  if (hierFirma && !dortFirma) return false;
-  const dort = fremd.gesetzt ?? 0;
-  const neuer = (dortFirma && !hierFirma) || dort > (e.lizenzGesetzt ?? 0);
-  if (!neuer) return false;
+  if (hierFirma !== dortFirma) return dortFirma ? dort : { wer: 'hier' };
+  const hierZeit = e.lizenzGesetzt ?? 0;
+  if (dort.gesetzt > hierZeit) return dort;
+  if (hierZeit > dort.gesetzt) return { wer: 'hier' };
+  return { wer: 'gleich' };
+}
+
+/**
+ * Schluessel abgleichen: einen besseren von oben uebernehmen. Liefert, ob
+ * stattdessen der hiesige der bessere ist und hinauf muss.
+ */
+async function lizenzAbgleichen(u: Umschlag): Promise<{ uebernommen: boolean; hinauf: boolean }> {
+  const v = await lizenzVergleichen(u);
+  if (v.wer !== 'dort') return { uebernommen: false, hinauf: v.wer === 'hier' };
+  const { schluessel: fremd, gesetzt: dort, lizenz } = v;
   unterdrueckt = true;
   try {
-    zustand.einstellungen = await einstellungenSchreiben({ lizenz: fremd.schluessel, lizenzGesetzt: dort });
+    zustand.einstellungen = await einstellungenSchreiben({ lizenz: fremd, lizenzGesetzt: dort });
   } finally {
     unterdrueckt = false;
   }
-  zustand.lizenz = ergebnis.lizenz;
-  return true;
+  zustand.lizenz = lizenz;
+  return { uebernommen: true, hinauf: false };
 }
 
 async function lokalLeer(): Promise<boolean> {
@@ -266,7 +299,7 @@ export async function abgleichen(still = false, minute = false): Promise<void> {
   try {
     const rev = await dbx.dateiStand(p);
     // Oben unveraendert seit dem letzten Abgleich: nur Hiesiges hinauf.
-    if (rev !== null && rev === lesen(K_REV) && basis() !== null && !zurueckgestellt) {
+    if (rev !== null && lesen(K_GEPRUEFT) === merkmal(rev) && basis() !== null && !zurueckgestellt) {
       if (offen()) await hochladen();
       else setzen(K_ZULETZT, String(Date.now()));
       if (!still) melden('Abgeglichen', 'Die Daten in der Dropbox sind auf dem neuesten Stand.');
@@ -281,34 +314,39 @@ export async function abgleichen(still = false, minute = false): Promise<void> {
       u = null;
     }
     const gueltig = u?.mblitz === 1 && u.typ === 'sicherung' && u.sicherung ? u : null;
-    if (gueltig && await lizenzAngleichen(gueltig)) neuZeichnen = true;
+    const schluessel = gueltig ? await lizenzAbgleichen(gueltig) : { uebernommen: false, hinauf: false };
+    if (schluessel.uebernommen) neuZeichnen = true;
 
     if (!gueltig) {
       // Noch keine (brauchbare) Datei oben: den hiesigen Stand als erste hinauf.
       if (rev === null) setzen(K_REV, null);
       if (rev === null || basis() !== null) await hochladen(rev !== null);
     } else if (gueltig.erzeugt === basis()) {
-      // Oben nichts Neues. Hiesiges hinauf — ebenso, wenn die Datei noch
-      // aus der Zeit ohne Schluessel stammt, sonst kaeme ein neuer
-      // Schluessel erst mit der naechsten Aenderung hinueber.
+      // Oben nichts Neues. Hiesiges hinauf — ebenso, wenn der Schluessel
+      // hier besser ist als der oben, sonst kaeme er erst mit der naechsten
+      // Aenderung hinueber.
       zurueckgestellt = false;
-      setzen(K_REV, rev);
-      const ohneSchluessel = !gueltig.lizenz && Boolean(zustand.einstellungen?.lizenz);
-      if (offen() || ohneSchluessel) await hochladen();
-      else setzen(K_ZULETZT, String(Date.now()));
+      if (offen() || schluessel.hinauf) {
+        // Als offen vermerkt, damit ein misslungener Upload wiederholt wird.
+        if (schluessel.hinauf) { aenderungen++; setzen(K_OFFEN, '1'); }
+        setzen(K_REV, rev);
+        await hochladen();
+      } else {
+        basisSetzen(gueltig.erzeugt, rev);
+      }
       if (!still) melden('Abgeglichen', 'Die Daten in der Dropbox sind auf dem neuesten Stand.');
     } else if (basis() === null && await lokalLeer()) {
       // Frisches Geraet: nichts, was verloren gehen koennte.
-      await einspielen(gueltig, rev);
+      await einspielen(gueltig, rev, false, schluessel.hinauf);
       melden('Aus der Dropbox übernommen', beschreibung(gueltig));
     } else if (basis() !== null && !offen()) {
       // Nur das andere Geraet hat geaendert: still uebernehmen — ausser
       // mitten in einer Eingabe, dann beim naechsten Durchgang.
-      if (!beschaeftigt() || !still) await einspielen(gueltig, rev);
+      if (!beschaeftigt() || !still) await einspielen(gueltig, rev, false, schluessel.hinauf);
     } else if (minute && zurueckgestellt) {
       // Bleibt zurueckgestellt bis zum Start, Zurueckkehren oder „Jetzt abgleichen".
     } else {
-      fragen(gueltig, rev);
+      fragen(gueltig, rev, schluessel.hinauf);
     }
   } catch (f) {
     if (!still || !dbx.verbunden()) {
@@ -341,7 +379,7 @@ const anzahl = (n: number, eins: string, viele: string) => `${n} ${n === 1 ? ein
  * „Hier behalten" das Zusammenfuehren: Ein ganzer Bestand soll nicht von
  * einem Probelauf ueberschrieben werden.
  */
-function fragen(u: Umschlag, rev: string | null): void {
+function fragen(u: Umschlag, rev: string | null, schluesselHinauf: boolean): void {
   if (status.frage) return;
   status.frage = true;
   const erstes = basis() === null;
@@ -371,11 +409,11 @@ function fragen(u: Umschlag, rev: string | null): void {
     [
       { text: 'Später', art: 'zweit', tun: spaeter },
       erstes
-        ? { text: 'Übernehmen', art: 'zweit', tun: entscheiden(() => einspielen(u, rev)) }
+        ? { text: 'Übernehmen', art: 'zweit', tun: entscheiden(() => einspielen(u, rev, false, schluesselHinauf)) }
         : { text: 'Hier behalten', art: 'zweit', tun: entscheiden(() => hochladen(true).then(() => neu())) },
       erstes
         ? { text: 'Zusammenführen', tun: entscheiden(() => einspielen(u, rev, true)) }
-        : { text: 'Übernehmen', tun: entscheiden(() => einspielen(u, rev)) },
+        : { text: 'Übernehmen', tun: entscheiden(() => einspielen(u, rev, false, schluesselHinauf)) },
     ],
     // Wegklicken neben dem Blatt zaehlt wie „Spaeter".
     spaeter,
@@ -429,6 +467,7 @@ export async function trennen(): Promise<void> {
   await dbx.trennen();
   setzen(K_BASIS, null);
   setzen(K_REV, null);
+  setzen(K_GEPRUEFT, null);
   setzen(K_ZULETZT, null);
   zurueckgestellt = false;
   neu();
