@@ -62,7 +62,7 @@ export function sperreView(): HTMLElement[] {
     meldung.className = 'meldung gut';
     // Gespeichert wird der gesaeuberte Schluessel: ein Zeilenumbruch aus der
     // Nachricht wuerde beim naechsten Start noch einmal mitgeprueft werden.
-    zustand.einstellungen = await einstellungenSchreiben({ lizenz: saeubern(text) });
+    zustand.einstellungen = await einstellungenSchreiben({ lizenz: saeubern(text), lizenzGesetzt: Date.now() });
     zustand.lizenz = ergebnis.lizenz;
     setTimeout(() => { zustand.ansicht = 'uebersicht'; neu(); }, 500);
   };

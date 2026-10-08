@@ -556,7 +556,8 @@ mark {
 .seitenleiste button[aria-current='page'] { background: var(--ader-soft); color: var(--ader); }
 .seitenleiste .ikon { width: 20px; height: 20px; }
 
-.am-pc .haupt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+/* main.haupt, nicht .haupt: die Klasse tragen auch Reihentitel und der Hauptknopf im Kopf. */
+.am-pc main.haupt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
 /* -------- Kopf, Suche, Rumpf: Inhalt mittig, Rollbalken am Fensterrand */
 .am-pc .kopf { padding: 16px var(--spalte) 14px; align-items: center; }

@@ -49,10 +49,9 @@ export function pdfErzeugen(
     // ausgedruckte Folgeseite soll auch sagen, von wem sie stammt.
     const wer = [ersteller.name, ersteller.firma].filter(Boolean).join(', ');
     const von = wer ? ` von ${wer}` : '';
-    doc.text(
-      `${zeilen.length} Positionen · erzeugt am ${datum(stand)} um ${zeit(stand)} Uhr${von} mit MaterialBlitz`,
-      15, h - 9,
-    );
+    // Ein langer Name samt Firma darf nicht in „Seite N" laufen.
+    const fuss = `${zeilen.length} Positionen · erzeugt am ${datum(stand)} um ${zeit(stand)} Uhr${von} mit MaterialBlitz`;
+    doc.text(doc.splitTextToSize(fuss, breite - 30 - 22)[0] ?? '', 15, h - 9);
     doc.text(`Seite ${seite}`, breite - 15, h - 9, { align: 'right' });
   };
 

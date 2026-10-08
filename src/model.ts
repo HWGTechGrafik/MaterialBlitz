@@ -80,6 +80,11 @@ export interface Einstellungen {
   /** Feste Liste plus selbst ergaenzte. */
   einheiten: string[];
   lizenz?: string;
+  /**
+   * Wann der Schluessel auf diesem Geraet eingesetzt wurde. Daran erkennt der
+   * Dropbox-Abgleich, welcher von zwei Schluesseln derselben Nummer neuer ist.
+   */
+  lizenzGesetzt?: number;
   /** Fehlt bei aelteren Daten — gilt dann als 'beides'. */
   ausweis?: Ausweis;
   /**

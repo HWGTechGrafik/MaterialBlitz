@@ -68,10 +68,12 @@ function seitenleiste(): HTMLElement {
 }
 
 let laeuft = false;
+let nochmal = false;
 async function zeichnen(): Promise<void> {
   // Ein Neuaufbau nach dem anderen — sonst ueberholen sich zwei Datenbank-
-  // abfragen und die Ansicht flackert.
-  if (laeuft) return;
+  // abfragen und die Ansicht flackert. Kommt waehrenddessen ein Wunsch nach
+  // Neuaufbau (etwa Daten aus der Dropbox), folgt genau einer danach.
+  if (laeuft) { nochmal = true; return; }
   laeuft = true;
   try {
     // Ohne gueltigen Schluessel kommt die App gar nicht erst hoch.
@@ -101,6 +103,7 @@ async function zeichnen(): Promise<void> {
     wurzel.replaceChildren(schirm);
   } finally {
     laeuft = false;
+    if (nochmal) { nochmal = false; void zeichnen(); }
   }
 }
 

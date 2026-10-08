@@ -85,12 +85,14 @@ export function blatt(
   titel: string,
   inhalt: Kind[],
   knoepfe: Array<{ text: string; art?: 'haupt' | 'zweit' | 'gefahr'; tun?: () => void }>,
+  /** Laeuft, wenn das Blatt durch Tippen daneben geschlossen wird. */
+  daneben?: () => void,
 ): void {
   const schliessen = () => schatten.remove();
   const schatten = h('div', {
     class: 'schatten',
     onclick: (ev: MouseEvent) => {
-      if (ev.target === schatten) schliessen();
+      if (ev.target === schatten) { schliessen(); daneben?.(); }
     },
   });
   const reihe = h(

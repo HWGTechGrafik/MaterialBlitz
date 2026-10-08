@@ -17,6 +17,12 @@ export interface Umschlag {
   typ: 'schein' | 'sicherung' | 'katalog';
   erzeugt: number;
   absender?: string;
+  /**
+   * Nur in der Dropbox-Sync-Datei, nie in einer Sicherungsdatei: der
+   * Lizenzschluessel des hochladenden Geraets, damit ein neuer Schluessel
+   * (etwa mit ergaenzter Firma) auf das andere Geraet wandert.
+   */
+  lizenz?: { schluessel: string; gesetzt: number };
   schein?: {
     bezeichnung?: string;
     positionen: Position[];
@@ -84,7 +90,7 @@ export async function scheinPacken(
 // ---------------------------------------------------------------- Sicherung
 
 /** Der gesamte Bestand als Umschlag — fuer die Sicherungsdatei und die Dropbox. */
-export async function sicherungUmschlag(absender?: string): Promise<Umschlag> {
+export async function sicherungUmschlag(absender?: string, mitLizenz = false): Promise<Umschlag> {
   const [artikel, kunden, baustellen, scheine, einstellungen] = await Promise.all([
     db.artikel.toArray(), db.kunden.toArray(), db.baustellen.toArray(),
     db.scheine.toArray(), einstellungenLesen(),
@@ -96,8 +102,15 @@ export async function sicherungUmschlag(absender?: string): Promise<Umschlag> {
     absender,
     // Die Lizenz bleibt draussen: eine Sicherungsdatei waere sonst ein
     // Generalschluessel, den jeder weitergeben koennte. Nach einem
-    // Geraetewechsel wird der Schluessel neu eingegeben.
-    sicherung: { artikel, kunden, baustellen, scheine, einstellungen: { ...einstellungen, lizenz: undefined } },
+    // Geraetewechsel wird der Schluessel neu eingegeben. Nur die Sync-Datei
+    // im eigenen Dropbox-Ordner traegt ihn (mitLizenz).
+    lizenz: mitLizenz && einstellungen.lizenz
+      ? { schluessel: einstellungen.lizenz, gesetzt: einstellungen.lizenzGesetzt ?? 0 }
+      : undefined,
+    sicherung: {
+      artikel, kunden, baustellen, scheine,
+      einstellungen: { ...einstellungen, lizenz: undefined, lizenzGesetzt: undefined },
+    },
   };
 }
 
@@ -261,7 +274,9 @@ export async function sicherungEinspielen(
       await db.baustellen.bulkAdd(s.baustellen);
       await db.scheine.bulkAdd(s.scheine);
       const eigene = await einstellungenLesen();
-      await db.einstellungen.put({ ...s.einstellungen, id: 1, lizenz: eigene.lizenz });
+      await db.einstellungen.put({
+        ...s.einstellungen, id: 1, lizenz: eigene.lizenz, lizenzGesetzt: eigene.lizenzGesetzt,
+      });
       return;
     }
 

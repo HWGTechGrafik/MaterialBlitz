@@ -233,17 +233,50 @@ export async function dateiLesen(pfad: string): Promise<string | null> {
   return antwort.text();
 }
 
-export async function dateiSchreiben(pfad: string, inhalt: string): Promise<boolean> {
+/**
+ * Kennung des aktuellen Stands einer Datei (rev), oder null, wenn es sie
+ * nicht gibt. Eine kleine Abfrage — damit laesst sich jede Minute nachsehen,
+ * ohne jedes Mal den ganzen Bestand zu laden.
+ */
+export async function dateiStand(pfad: string): Promise<string | null> {
+  const antwort = await fetch('https://api.dropboxapi.com/2/files/get_metadata', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${await token()}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: pfad }),
+  });
+  if (antwort.status === 409) return null;
+  if (!antwort.ok) throw new DropboxFehler(`Dropbox ist nicht erreichbar (${antwort.status}).`);
+  return ((await antwort.json()) as { rev?: string }).rev ?? null;
+}
+
+/**
+ * Wie geschrieben wird: `neu` nur, wenn es die Datei noch nicht gibt; `auf`
+ * nur, wenn sie noch auf dem Stand `rev` ist; `ueberschreiben` immer.
+ */
+export type Schreibart = { art: 'neu' } | { art: 'auf'; rev: string } | { art: 'ueberschreiben' };
+
+/**
+ * Schreibt die Datei. Liefert ihre neue Kennung, 'konflikt', wenn sie oben
+ * inzwischen anders aussieht als erwartet, oder null bei sonstigem Fehler.
+ */
+export async function dateiSchreiben(
+  pfad: string, inhalt: string, wie: Schreibart,
+): Promise<{ rev: string } | 'konflikt' | null> {
+  const mode = wie.art === 'neu' ? 'add'
+    : wie.art === 'auf' ? { '.tag': 'update', update: wie.rev }
+    : 'overwrite';
   const antwort = await fetch('https://content.dropboxapi.com/2/files/upload', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${await token()}`,
-      'Dropbox-API-Arg': apiArg({ path: pfad, mode: 'overwrite', mute: true }),
+      'Dropbox-API-Arg': apiArg({ path: pfad, mode, autorename: false, mute: true }),
       'Content-Type': 'application/octet-stream',
     },
     body: new TextEncoder().encode(inhalt),
   });
-  return antwort.ok;
+  if (antwort.status === 409) return 'konflikt';
+  if (!antwort.ok) return null;
+  return { rev: ((await antwort.json()) as { rev?: string }).rev ?? '' };
 }
 
 /** Nur dieses Geraet abmelden — die Sync-Datei bleibt in der Dropbox. */

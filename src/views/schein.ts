@@ -234,6 +234,8 @@ function tastaturBinden(tasten: HTMLElement): void {
     // Schein verlassen, ohne den Block zu schliessen: dann nichts mehr tun —
     // sonst uebernaehme Enter im Dashboard noch eine Menge.
     if (!tasten.isConnected) { tastaturLoesen(); return; }
+    // Gehaltene Taste und Tastenkuerzel (Strg+C …) zaehlen nicht.
+    if (ev.repeat || ev.ctrlKey || ev.altKey || ev.metaKey) return;
     const ziel = ev.target;
     if ((ziel instanceof Element && ziel.closest('input, textarea, select')) || document.querySelector('.schatten')) return;
     const text = /^[0-9]$/.test(ev.key) ? ev.key
@@ -246,6 +248,9 @@ function tastaturBinden(tasten: HTMLElement): void {
     else if (ev.key === 'Escape') knopf = tasten.querySelector<HTMLButtonElement>('.ab');
     if (!knopf) return;
     ev.preventDefault();
+    // Enter und Esc schliessen den Block — ein zweites Enter darf nicht noch
+    // einmal uebernehmen, bevor er weg ist.
+    if (ev.key === 'Enter' || ev.key === 'Escape') tastaturLoesen();
     knopf.click();
   };
   document.addEventListener('keydown', tastenHorcher);

@@ -142,7 +142,7 @@ function dropboxKarte(): HTMLElement | null {
       h('span', { class: 'v', text: zuletzt ? `${datum(zuletzt)}, ${zeit(zuletzt)}` : '—' }),
     ),
     h('p', { style: 'margin-top:8px',
-      text: 'Jede Änderung wird automatisch in die Dropbox geschrieben. Beim Start und beim Zurückkehren in die App werden neuere Daten anderer Geräte angeboten.' }),
+      text: 'Läuft von selbst: Jede Änderung geht in die Dropbox, Neues vom anderen Gerät kommt beim Start, beim Zurückkehren und jede Minute dazu – auch ein neuer Lizenzschlüssel. Gefragt wird nur, wenn auf beiden Geräten zugleich geändert wurde.' }),
     h('div', { class: 'knopf-reihe', style: 'margin-top:10px' },
       h('button', {
         class: 'knopf', type: 'button',
@@ -324,7 +324,8 @@ async function katalogLeerenKarte(): Promise<HTMLElement> {
             return;
           }
           await db.artikel.clear();
-          // clear() laeuft an den Datenbank-Haken vorbei.
+          // Sicherheitshalber ausdruecklich: ob clear() die Datenbank-Haken
+          // ausloest, haengt von der Dexie-Fassung ab.
           abgleich.geaendert();
           // Nichts Neues mehr, das in die naechste Sicherung gehoert.
           zustand.einstellungen = await einstellungenSchreiben({ neueArtikel: 0 });
@@ -414,7 +415,7 @@ async function schluesselEinsetzen(text: string): Promise<void> {
     melden('Nicht übernommen', `${ergebnis.text} Die bisherige Lizenz bleibt.`);
     return;
   }
-  zustand.einstellungen = await einstellungenSchreiben({ lizenz: saeubern(text) });
+  zustand.einstellungen = await einstellungenSchreiben({ lizenz: saeubern(text), lizenzGesetzt: Date.now() });
   zustand.lizenz = ergebnis.lizenz;
   neu();
   const { name, firma, nummer } = ergebnis.lizenz;
@@ -446,6 +447,8 @@ function lizenzKarte(ausweis: Ausweis): HTMLElement {
     );
     auswahl.onchange = async () => {
       zustand.einstellungen = await einstellungenSchreiben({ ausweis: auswahl.value as Ausweis });
+      // Seitenleiste und Dashboard zeigen den Namen ebenfalls.
+      neu();
       melden('Gespeichert', 'Gilt ab dem nächsten Schein, der ans Büro geht.');
     };
     wahl = h('label', { class: 'feld', style: 'margin-top:12px' },
