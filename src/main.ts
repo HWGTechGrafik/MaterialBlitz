@@ -2,6 +2,7 @@ import './styles.css';
 import { registerSW } from 'virtual:pwa-register';
 import { einstellungenLesen } from './db';
 import { pruefen } from './lib/lizenz';
+import { abgleichStarten } from './lib/abgleich';
 import { freigeschaltet, gehe, neu, zeichnerSetzen, zustand, type Ansicht } from './store';
 import { blatt, h, ikon, type IkonName } from './ui';
 import { uebersicht } from './views/uebersicht';
@@ -112,6 +113,8 @@ async function start(): Promise<void> {
     if (ergebnis.ok) zustand.lizenz = ergebnis.lizenz;
   }
   neu();
+  // Nach dem ersten Zeichnen: Die App ist sofort da, die Dropbox kommt dazu.
+  await abgleichStarten();
 }
 
 void start();

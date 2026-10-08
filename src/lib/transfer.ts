@@ -83,20 +83,26 @@ export async function scheinPacken(
 
 // ---------------------------------------------------------------- Sicherung
 
-export async function sicherungPacken(): Promise<File> {
+/** Der gesamte Bestand als Umschlag — fuer die Sicherungsdatei und die Dropbox. */
+export async function sicherungUmschlag(absender?: string): Promise<Umschlag> {
   const [artikel, kunden, baustellen, scheine, einstellungen] = await Promise.all([
     db.artikel.toArray(), db.kunden.toArray(), db.baustellen.toArray(),
     db.scheine.toArray(), einstellungenLesen(),
   ]);
-  const umschlag: Umschlag = {
+  return {
     mblitz: 1,
     typ: 'sicherung',
     erzeugt: Date.now(),
+    absender,
     // Die Lizenz bleibt draussen: eine Sicherungsdatei waere sonst ein
     // Generalschluessel, den jeder weitergeben koennte. Nach einem
     // Geraetewechsel wird der Schluessel neu eingegeben.
     sicherung: { artikel, kunden, baustellen, scheine, einstellungen: { ...einstellungen, lizenz: undefined } },
   };
+}
+
+export async function sicherungPacken(): Promise<File> {
+  const umschlag = await sicherungUmschlag();
   const name = `MaterialBlitz_Sicherung_${datumSortierbar(umschlag.erzeugt)}.txt`;
   return zuDatei(umschlag, name);
 }

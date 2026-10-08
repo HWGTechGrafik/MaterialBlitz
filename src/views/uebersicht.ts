@@ -6,6 +6,7 @@ import { artikelBearbeiten, projektLoeschen } from './katalog';
 import { tageSeit } from '../lib/format';
 import { dateiWaehlen } from '../lib/share';
 import { AM_PC } from '../lib/geraet';
+import { eingerichtet as dropboxEingerichtet, verbunden as dropboxVerbunden } from '../lib/dropbox';
 import { katalogEinlesen, scheinUebernehmen, sicherungEinspielen, vorschau } from '../lib/transfer';
 import {
   durchsuchen, suchAktiv, suchBegriffe, zerlegen, type Fund, type FundArt,
@@ -257,6 +258,8 @@ async function projektListe(): Promise<HTMLElement[]> {
 }
 
 async function sicherungFaellig(): Promise<HTMLElement | null> {
+  // Mit Dropbox liegt alles ohnehin noch einmal ausser Haus.
+  if (dropboxEingerichtet() && dropboxVerbunden()) return null;
   const e = zustand.einstellungen ?? (await einstellungenLesen());
   const tage = e.letzteSicherung ? tageSeit(e.letzteSicherung) : Infinity;
   const wegenZeit = tage >= SICHERUNG_TAGE;

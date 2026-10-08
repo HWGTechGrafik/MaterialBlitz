@@ -2,13 +2,15 @@ import { db, einstellungenLesen, einstellungenSchreiben } from '../db';
 import { EINHEITEN_STANDARD, type Ausweis } from '../model';
 import { neu, zustand } from '../store';
 import { blatt, h, melden } from '../ui';
-import { datum } from '../lib/format';
+import { datum, zeit } from '../lib/format';
 import { datumText, pruefen, saeubern } from '../lib/lizenz';
 import { fassungsZeile } from '../lib/fassung';
 
 import { dateiWaehlen, teilen } from '../lib/share';
 import { AM_PC, NICHT_MOEGLICH } from '../lib/geraet';
 import { archivPacken, sicherungPacken } from '../lib/transfer';
+import * as dropbox from '../lib/dropbox';
+import * as abgleich from '../lib/abgleich';
 
 export async function einstellungenView(): Promise<HTMLElement[]> {
   const e = await einstellungenLesen();
@@ -82,6 +84,7 @@ export async function einstellungenView(): Promise<HTMLElement[]> {
         h('button', { class: 'knopf', type: 'button', text: 'Speichern', onclick: bueroSpeichern }),
       ),
 
+      dropboxKarte(),
       await sicherungKarte(),
       archivKarte(),
       einheitenKarte(e.einheiten),
@@ -95,6 +98,65 @@ export async function einstellungenView(): Promise<HTMLElement[]> {
   );
 
   return [kopf, rumpf];
+}
+
+// --------------------------------------------------------------- Dropbox
+
+/**
+ * Wie bei BzzOps: verbinden, danach laeuft alles von selbst. Die Karte fehlt
+ * ganz, solange die App ohne Dropbox-App-Key gebaut ist.
+ */
+function dropboxKarte(): HTMLElement | null {
+  if (!dropbox.eingerichtet()) return null;
+  const geraete = AM_PC ? 'Büro-PC und Handy' : 'Handy und Büro-PC';
+
+  if (!dropbox.verbunden()) {
+    return h('div', { class: 'karte' },
+      h('h2', { text: 'Dropbox-Abgleich' }),
+      h('p', { text: `Damit ${geraete} dieselben Daten haben: Projekte, Scheine, Archiv und Kunden. Alle Geräte mit derselben Dropbox und derselben Lizenz gleichen automatisch miteinander ab.` }),
+      h('p', { text: 'MaterialBlitz sieht dabei nur den eigenen Ordner (Dropbox › Apps › MaterialBlitz App), nicht den Rest der Dropbox.' }),
+      h('button', {
+        class: 'knopf', type: 'button', text: 'Mit Dropbox verbinden …', style: 'margin-top:10px',
+        onclick: () => void abgleich.verbinden(),
+      }),
+    );
+  }
+
+  const konto = dropbox.konto();
+  const zuletzt = abgleich.zuletzt();
+  return h('div', { class: 'karte' },
+    h('h2', { text: 'Dropbox-Abgleich' }),
+    h('div', { class: 'paar' },
+      h('span', { class: 'k', text: 'Verbunden mit' }),
+      h('span', { class: 'v', style: 'color:var(--blitz)', text: konto ?? 'Dropbox' }),
+    ),
+    h('div', { class: 'paar' },
+      h('span', { class: 'k', text: 'Zuletzt abgeglichen' }),
+      h('span', { class: 'v', text: zuletzt ? `${datum(zuletzt)}, ${zeit(zuletzt)}` : '—' }),
+    ),
+    h('p', { style: 'margin-top:8px',
+      text: 'Jede Änderung wird automatisch in die Dropbox geschrieben. Beim Start und beim Zurückkehren in die App werden neuere Daten anderer Geräte angeboten.' }),
+    h('div', { class: 'knopf-reihe', style: 'margin-top:10px' },
+      h('button', {
+        class: 'knopf', type: 'button',
+        text: abgleich.status.arbeitet ? 'Gleicht ab …' : 'Jetzt abgleichen',
+        disabled: abgleich.status.arbeitet,
+        onclick: () => void abgleich.abgleichen(),
+      }),
+      h('button', {
+        class: 'knopf gefahr', type: 'button', text: 'Trennen',
+        onclick: () => blatt(
+          'Dropbox trennen?',
+          [h('p', { class: 'hinweis', style: 'padding:0',
+            text: `Nur ${AM_PC ? 'dieser Rechner' : 'dieses Gerät'} wird abgemeldet. Die Daten hier und die Sync-Datei in der Dropbox bleiben.` })],
+          [
+            { text: 'Abbrechen', art: 'zweit' },
+            { text: 'Trennen', art: 'gefahr', tun: () => void abgleich.trennen() },
+          ],
+        ),
+      }),
+    ),
+  );
 }
 
 // ------------------------------------------------------------- Sicherung
@@ -255,6 +317,8 @@ async function katalogLeerenKarte(): Promise<HTMLElement> {
             return;
           }
           await db.artikel.clear();
+          // clear() laeuft an den Datenbank-Haken vorbei.
+          abgleich.geaendert();
           // Nichts Neues mehr, das in die naechste Sicherung gehoert.
           zustand.einstellungen = await einstellungenSchreiben({ neueArtikel: 0 });
           neu();
