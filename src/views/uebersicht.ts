@@ -1,6 +1,6 @@
 import { db, einstellungenLesen, einstellungenSchreiben } from '../db';
 import { SICHERUNG_ARTIKEL, SICHERUNG_TAGE, type Baustelle, type Kunde } from '../model';
-import { benutzer, gehe, neu, zustand } from '../store';
+import { erstellerText, gehe, neu, zustand } from '../store';
 import { blatt, h, ikon, kopfKnopf, kopfRechts, marke, melden, umschalter, wischbar, type NeuArt } from '../ui';
 import { artikelBearbeiten, projektLoeschen } from './katalog';
 import { tageSeit } from '../lib/format';
@@ -35,8 +35,8 @@ function kopfBauen(): HTMLElement {
       { class: 'kopf-text' },
       h('div', { class: 'eyebrow', text: 'MaterialBlitz' }),
       h('h1', { text: 'Dashboard' }),
-      // Wer hier arbeitet — der Name aus der Lizenz, wie auf PDF und CSV.
-      h('div', { class: 'unter', text: benutzer() }),
+      // Wer hier arbeitet — aus der Lizenz, wie auf dem PDF.
+      h('div', { class: 'unter', text: erstellerText(' · ') }),
     ),
     kopfRechts(
       null,

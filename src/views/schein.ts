@@ -6,7 +6,7 @@ import {
   istZaehlbar, positionHinzufuegen, runden,
   type Artikel, type Baustelle, type Kunde, type Position, type Schein,
 } from '../model';
-import { benutzer, gehe, neu, zustand } from '../store';
+import { ersteller, erstellerText, gehe, neu, zustand } from '../store';
 import { blatt, h, ikon, kopfKnopf, kopfRechts, langDruck, melden } from '../ui';
 import { codeNormalisieren, qrLesen } from '../lib/codes';
 import { datum, menge as mengeText, zahl, zeit } from '../lib/format';
@@ -495,10 +495,9 @@ async function senden(baustelle: Baustelle, kunde: Kunde | undefined, schein: Sc
   // statt mitschleppen: der Start auf der Baustelle bleibt leicht, und der
   // Service Worker hat die Datei trotzdem im Vorrat.
   const { pdfDatei } = await import('../lib/pdf');
-  const ich = benutzer();
   const dateien = [
-    csvDatei(stand, baustelle, kunde, ich),
-    pdfDatei(stand, baustelle, e.firma, kunde, ich),
+    csvDatei(stand, baustelle, kunde, erstellerText()),
+    pdfDatei(stand, baustelle, e.firma, kunde, ersteller()),
   ];
 
   const ergebnis = await teilen(dateien);
@@ -561,8 +560,8 @@ function bezeichnen(schein: Schein): void {
 async function uebergeben(baustelle: Baustelle, kunde: Kunde | undefined, schein: Schein): Promise<void> {
   const e = await einstellungenLesen();
   // Der Name aus der Lizenz sagt dem Kollegen mehr als der Firmenname, den
-  // im Betrieb alle gleich eingetragen haben.
-  const absender = benutzer() || e.firma.name || 'MaterialBlitz';
+  // im Betrieb alle gleich eingetragen haben — sofern er gewaehlt ist.
+  const absender = erstellerText() || e.firma.name || 'MaterialBlitz';
   const datei = await scheinPacken(schein, baustelle, kunde, absender);
 
   const ergebnis = await teilen([datei]);

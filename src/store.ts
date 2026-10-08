@@ -46,10 +46,29 @@ export function freigeschaltet(): boolean {
   return Boolean(zustand.lizenz);
 }
 
+/** Wer einen Schein erstellt hat — so, wie es auf PDF und CSV steht. */
+export interface Ersteller {
+  name: string | null;
+  firma: string | null;
+}
+
 /**
- * Wer mit der App arbeitet: der Name, auf den die Lizenz ausgestellt ist.
- * Er steht auf PDF und CSV und im Dashboard. Leer nur vor der Freischaltung.
+ * Name und Firma aus der Lizenz, gefiltert nach der Wahl in den
+ * Einstellungen. Fehlt der Lizenz das Gewaehlte (aeltere Schluessel tragen
+ * nur den Namen), bleibt stehen, was da ist — leer wird es nie.
  */
-export function benutzer(): string {
-  return zustand.lizenz?.betrieb ?? '';
+export function ersteller(): Ersteller {
+  const l = zustand.lizenz;
+  if (!l) return { name: null, firma: null };
+  const wahl = zustand.einstellungen?.ausweis ?? 'beides';
+  return {
+    name: wahl === 'firma' && l.firma ? null : l.name,
+    firma: wahl === 'name' && l.name ? null : l.firma,
+  };
+}
+
+/** Der Ersteller als eine Zeile, etwa fuer CSV, Fusszeile und Dashboard. */
+export function erstellerText(trenner = ', '): string {
+  const { name, firma } = ersteller();
+  return [name, firma].filter(Boolean).join(trenner);
 }

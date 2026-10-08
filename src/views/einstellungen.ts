@@ -1,12 +1,12 @@
 import { db, einstellungenLesen, einstellungenSchreiben } from '../db';
-import { EINHEITEN_STANDARD } from '../model';
+import { EINHEITEN_STANDARD, type Ausweis } from '../model';
 import { neu, zustand } from '../store';
 import { blatt, h, melden } from '../ui';
 import { datum } from '../lib/format';
-import { datumText } from '../lib/lizenz';
+import { datumText, pruefen, saeubern } from '../lib/lizenz';
 import { fassungsZeile } from '../lib/fassung';
 
-import { teilen } from '../lib/share';
+import { dateiWaehlen, teilen } from '../lib/share';
 import { AM_PC, NICHT_MOEGLICH } from '../lib/geraet';
 import { archivPacken, sicherungPacken } from '../lib/transfer';
 
@@ -86,7 +86,7 @@ export async function einstellungenView(): Promise<HTMLElement[]> {
       archivKarte(),
       einheitenKarte(e.einheiten),
       await katalogLeerenKarte(),
-      lizenzKarte(),
+      lizenzKarte(e.ausweis ?? 'beides'),
 
       // Ganz unten und leise: Man sucht sie nur, wenn man wissen will, ob
       // ein Update angekommen ist — und dann findet man sie dort.
@@ -302,6 +302,55 @@ async function katalogLeerenKarte(): Promise<HTMLElement> {
 // ---------------------------------------------------------------- Lizenz
 
 /**
+ * Einen neuen Schluessel ueber den alten legen — etwa denselben mit
+ * nachgetragener Firma. Anders als beim Entfernen ist die App dazwischen nie
+ * gesperrt, und ein ungueltiger Schluessel aendert nichts: die bisherige
+ * Lizenz bleibt dann einfach stehen.
+ */
+function schluesselErfragen(): void {
+  const eingabe = h('textarea', {
+    class: 'schluessel', rows: '3', autocomplete: 'off', autocapitalize: 'off',
+    placeholder: 'MBL1.…', 'aria-label': 'Neuer Lizenzschlüssel',
+  });
+  eingabe.spellcheck = false;
+  blatt(
+    'Neuen Schlüssel einsetzen',
+    [
+      h('p', { class: 'hinweis', style: 'padding:0',
+        text: AM_PC
+          ? 'Den neuen Schlüssel ins Feld einfügen (Strg+V). Die Daten bleiben, wie sie sind.'
+          : 'Den neuen Schlüssel ins Feld einfügen (lange drücken, „Einsetzen"). Die Daten bleiben, wie sie sind.' }),
+      h('label', { class: 'feld' }, eingabe),
+    ],
+    [
+      { text: 'Abbrechen', art: 'zweit' },
+      {
+        text: 'Aus Datei…', art: 'zweit',
+        tun: async () => {
+          const text = await dateiWaehlen();
+          if (text !== null) await schluesselEinsetzen(text);
+        },
+      },
+      { text: 'Einsetzen', tun: () => void schluesselEinsetzen(eingabe.value) },
+    ],
+  );
+}
+
+async function schluesselEinsetzen(text: string): Promise<void> {
+  if (!saeubern(text)) return;
+  const ergebnis = await pruefen(text);
+  if (!ergebnis.ok) {
+    melden('Nicht übernommen', `${ergebnis.text} Die bisherige Lizenz bleibt.`);
+    return;
+  }
+  zustand.einstellungen = await einstellungenSchreiben({ lizenz: saeubern(text) });
+  zustand.lizenz = ergebnis.lizenz;
+  neu();
+  const { name, firma, nummer } = ergebnis.lizenz;
+  melden('Lizenz eingesetzt', `Nr. ${nummer}, ausgestellt für ${[name, firma].filter(Boolean).join(', ')}.`);
+}
+
+/**
  * Hier ist immer eine gueltige Lizenz eingetragen — ohne kommt man gar nicht
  * so weit, der Sperrbildschirm steht davor.
  *
@@ -309,14 +358,43 @@ async function katalogLeerenKarte(): Promise<HTMLElement> {
  * ist ueber 150 Zeichen lang und sagt niemandem etwas. Auf wen die Lizenz
  * ausgestellt ist, sagt dagegen genau das, was man wissen will.
  */
-function lizenzKarte(): HTMLElement {
+function lizenzKarte(ausweis: Ausweis): HTMLElement {
   const l = zustand.lizenz;
+
+  // Die Wahl gibt es nur, wenn die Lizenz beides traegt — aeltere Schluessel
+  // kennen nur den Namen.
+  let wahl: HTMLElement | null = null;
+  if (l?.name && l.firma) {
+    const auswahl = h('select', { 'aria-label': 'Was auf Schein und Dashboard steht' },
+      ...([
+        ['beides', `Name und Firma — ${l.name}, ${l.firma}`],
+        ['name', `nur Name — ${l.name}`],
+        ['firma', `nur Firma — ${l.firma}`],
+      ] as const).map(([wert, text]) =>
+        h('option', { value: wert, text, selected: wert === ausweis })),
+    );
+    auswahl.onchange = async () => {
+      zustand.einstellungen = await einstellungenSchreiben({ ausweis: auswahl.value as Ausweis });
+      melden('Gespeichert', 'Gilt ab dem nächsten Schein, der ans Büro geht.');
+    };
+    wahl = h('label', { class: 'feld', style: 'margin-top:12px' },
+      h('span', { text: 'Auf Schein und Dashboard steht' }), auswahl);
+  }
+
   return h('div', { class: 'karte' },
     h('h2', { text: 'Lizenz' }),
     h('div', { class: 'paar' },
       h('span', { class: 'k', text: 'Ausgestellt für' }),
-      h('span', { class: 'v', style: 'color:var(--blitz)', text: l?.betrieb ?? '—' }),
+      h('span', { class: 'v', style: 'color:var(--blitz)', text: l?.name ?? l?.firma ?? '—' }),
     ),
+    // Eine eigene Zeile nur, wenn beides drinsteht — sonst stuende dieselbe
+    // Firma zweimal da.
+    l?.name && l.firma
+      ? h('div', { class: 'paar' },
+        h('span', { class: 'k', text: 'Firma' }),
+        h('span', { class: 'v', text: l.firma }),
+      )
+      : null,
     h('div', { class: 'paar' },
       h('span', { class: 'k', text: 'Lizenznummer' }),
       h('span', { class: 'v', text: l ? `Nr. ${l.nummer}` : '—' }),
@@ -329,6 +407,12 @@ function lizenzKarte(): HTMLElement {
       h('span', { class: 'k', text: 'Laufzeit' }),
       h('span', { class: 'v', text: l?.laeuftAb ? `bis ${datumText(l.laeuftAb)}` : 'unbefristet' }),
     ),
+    wahl,
+    h('button', {
+      class: 'knopf zweit', type: 'button', text: 'Neuen Schlüssel einsetzen',
+      style: 'margin-bottom:8px',
+      onclick: schluesselErfragen,
+    }),
     h('button', {
       class: 'knopf gefahr', type: 'button', text: 'Lizenz von diesem Gerät entfernen',
       onclick: () => {

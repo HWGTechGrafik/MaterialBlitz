@@ -11,9 +11,11 @@
  * P-256 und nicht Ed25519, weil P-256 in jedem Browser mit WebCrypto
  * funktioniert — Ed25519 kam dort erst spaet dazu.
  *
- * Im Inhalt steht, **fuer welchen Betrieb** die Lizenz ausgestellt ist. Damit
- * ist der Merkzettel aus Ticket 12 im Schluessel selbst und nicht in einer
- * Liste daneben.
+ * Im Inhalt steht, **fuer wen** die Lizenz ausgestellt ist: ein Name (`b`),
+ * eine Firma (`f`) oder beides — das waehlt der Lizenzgenerator. Damit ist der
+ * Merkzettel aus Ticket 12 im Schluessel selbst und nicht in einer Liste
+ * daneben. Aeltere Schluessel tragen nur `b` und bleiben gueltig; das Feld
+ * hiess damals „Betrieb", eingetragen wurde dort aber schon meist der Name.
  *
  * **Die Grenze ehrlich benannt:** Die App laeuft vollstaendig am Geraet. Wer
  * den Quelltext aendert, haengt die Pruefung ab — bei einer Browser-App ist
@@ -23,8 +25,10 @@
 import { LIZENZ_OEFFENTLICH } from './lizenz-schluessel';
 
 export interface Lizenz {
-  /** Auf welchen Betrieb die Lizenz ausgestellt ist. */
-  betrieb: string;
+  /** Name der Person, oder null bei einer Lizenz nur auf die Firma. */
+  name: string | null;
+  /** Firma, oder null bei einer Lizenz nur auf den Namen. */
+  firma: string | null;
   /** Ausstellungsdatum, ISO (JJJJ-MM-TT). */
   ausgestellt: string;
   /** Ablaufdatum, ISO — oder null fuer unbefristet. */
@@ -42,7 +46,10 @@ const PRAEFIX = 'MBL1';
 /** Roher Inhalt eines Schluessels, absichtlich kurze Feldnamen. */
 interface Inhalt {
   v: number;
-  b: string;
+  /** Name — fehlt bei einer Lizenz nur auf die Firma. */
+  b?: string;
+  /** Firma — fehlt bei aelteren Schluesseln und bei einer nur auf den Namen. */
+  f?: string;
   a: string;
   e?: string;
   n: string;
@@ -113,7 +120,9 @@ export async function pruefen(
   } catch {
     gueltig = false;
   }
-  if (!gueltig || inhalt.v !== 1 || !inhalt.b) {
+  const name = inhalt.b?.trim() || null;
+  const firma = inhalt.f?.trim() || null;
+  if (!gueltig || inhalt.v !== 1 || !(name || firma)) {
     return { ok: false, grund: 'signatur', text: 'Dieser Schlüssel ist nicht gültig.' };
   }
 
@@ -131,7 +140,8 @@ export async function pruefen(
   return {
     ok: true,
     lizenz: {
-      betrieb: inhalt.b,
+      name,
+      firma,
       ausgestellt: inhalt.a,
       laeuftAb: inhalt.e ?? null,
       nummer: inhalt.n,

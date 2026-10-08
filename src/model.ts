@@ -71,12 +71,17 @@ export interface Firma {
   telefon: string;
 }
 
+/** Was aus der Lizenz auf Schein und Dashboard steht. */
+export type Ausweis = 'beides' | 'name' | 'firma';
+
 export interface Einstellungen {
   id?: number;
   firma: Firma;
   /** Feste Liste plus selbst ergaenzte. */
   einheiten: string[];
   lizenz?: string;
+  /** Fehlt bei aelteren Daten — gilt dann als 'beides'. */
+  ausweis?: Ausweis;
   /**
    * Adresse des Bueros. Steht **nicht** auf dem PDF — sie liegt beim Senden
    * in der Zwischenablage, damit sie in der Mail nur noch einzusetzen ist.

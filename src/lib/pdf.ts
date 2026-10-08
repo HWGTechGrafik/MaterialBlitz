@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 // Funktionsform statt doc.autoTable(): nur die ist in 3.x sauber typisiert.
 import autoTable from 'jspdf-autotable';
 import type { Baustelle, Firma, Kunde, Schein } from '../model';
+import type { Ersteller } from '../store';
 import { datum, dateinameTeil, datumSortierbar, menge, zeit, zeitKompakt } from './format';
 import { markeDataURL } from './marke';
 
@@ -26,7 +27,7 @@ export function pdfErzeugen(
   baustelle: Baustelle,
   firma: Firma,
   kunde?: Kunde,
-  ersteller = '',
+  ersteller: Ersteller = { name: null, firma: null },
 ): jsPDF {
   // compress steht sonst auf false — derselbe Schein waere achtmal so gross.
   const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
@@ -46,7 +47,8 @@ export function pdfErzeugen(
     doc.setTextColor(...GRAU);
     // Auf jeder Seite, nicht nur im Kasten der ersten: eine einzelne
     // ausgedruckte Folgeseite soll auch sagen, von wem sie stammt.
-    const von = ersteller ? ` von ${ersteller}` : '';
+    const wer = [ersteller.name, ersteller.firma].filter(Boolean).join(', ');
+    const von = wer ? ` von ${wer}` : '';
     doc.text(
       `${zeilen.length} Positionen · erzeugt am ${datum(stand)} um ${zeit(stand)} Uhr${von} mit MaterialBlitz`,
       15, h - 9,
@@ -96,7 +98,6 @@ export function pdfErzeugen(
     const ky = 36;
     doc.setDrawColor(...LINIE);
     doc.setLineWidth(0.3);
-    doc.roundedRect(kx, ky, 75, 36, 1.5, 1.5);
     const paare: Array<[string, string]> = [
       // Im PDF ausgeschrieben — anders als im CSV, wo die Spalte leer bleibt.
       // Das Blatt liest ein Mensch.
@@ -105,9 +106,14 @@ export function pdfErzeugen(
       ['Baustelle', baustelle.ort],
       ['Bereich', schein.bezeichnung || '—'],
       ['Datum', `${datum(stand)}, ${zeit(stand)}`],
-      // Der Name aus der Lizenz — wer den Schein ans Buero schickt.
-      ['Erstellt von', ersteller || '—'],
     ];
+    // Aus der Lizenz, wie in den Einstellungen gewaehlt: der Name als
+    // "Erstellt von", die Firma darunter — oder allein an seiner Stelle.
+    if (ersteller.name) paare.push(['Erstellt von', ersteller.name]);
+    if (ersteller.firma) paare.push([ersteller.name ? 'Firma' : 'Erstellt von', ersteller.firma]);
+    if (!ersteller.name && !ersteller.firma) paare.push(['Erstellt von', '—']);
+    kastenUnten = ky + paare.length * 6.5 + 4;
+    doc.roundedRect(kx, ky, 75, kastenUnten - ky, 1.5, 1.5);
     let y = ky + 6.5;
     for (const [k, v] of paare) {
       doc.setFont('helvetica', 'normal');
@@ -138,12 +144,14 @@ export function pdfErzeugen(
     }
   };
 
+  // Der Kasten waechst mit der Zahl seiner Zeilen; die Tabelle setzt darunter an.
+  let kastenUnten = 72;
   let erste = true;
   kopf(true);
   autoTable(doc, {
     head: [['Pos', 'Material', 'Menge', 'Einheit']],
     body: zeilen,
-    startY: 78,
+    startY: kastenUnten + 6,
     margin: { top: 22, left: 15, right: 15, bottom: 20 },
     styles: {
       font: 'helvetica', fontSize: 10, cellPadding: 2.2,
@@ -177,7 +185,7 @@ export function pdfDateiname(schein: Schein, baustelle: Baustelle): string {
 }
 
 export function pdfDatei(
-  schein: Schein, baustelle: Baustelle, firma: Firma, kunde?: Kunde, ersteller = '',
+  schein: Schein, baustelle: Baustelle, firma: Firma, kunde?: Kunde, ersteller?: Ersteller,
 ): File {
   const blob = pdfErzeugen(schein, baustelle, firma, kunde, ersteller).output('blob');
   return new File([blob], pdfDateiname(schein, baustelle), { type: 'application/pdf' });

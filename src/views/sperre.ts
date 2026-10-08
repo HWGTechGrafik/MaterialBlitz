@@ -57,7 +57,8 @@ export function sperreView(): HTMLElement[] {
       return;
     }
 
-    meldung.textContent = `Freigeschaltet für ${ergebnis.lizenz.betrieb}.`;
+    const { name, firma } = ergebnis.lizenz;
+    meldung.textContent = `Freigeschaltet für ${[name, firma].filter(Boolean).join(', ')}.`;
     meldung.className = 'meldung gut';
     // Gespeichert wird der gesaeuberte Schluessel: ein Zeilenumbruch aus der
     // Nachricht wuerde beim naechsten Start noch einmal mitgeprueft werden.
