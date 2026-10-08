@@ -3,8 +3,9 @@ import { registerSW } from 'virtual:pwa-register';
 import { einstellungenLesen } from './db';
 import { pruefen } from './lib/lizenz';
 import { abgleichStarten } from './lib/abgleich';
-import { freigeschaltet, gehe, neu, zeichnerSetzen, zustand, type Ansicht } from './store';
-import { blatt, h, ikon, type IkonName } from './ui';
+import { erstellerText, freigeschaltet, gehe, neu, zeichnerSetzen, zustand, type Ansicht } from './store';
+import { blatt, h, ikon, marke, type IkonName } from './ui';
+import { AM_PC } from './lib/geraet';
 import { uebersicht } from './views/uebersicht';
 import { katalogView } from './views/katalog';
 import { einstellungenView } from './views/einstellungen';
@@ -12,6 +13,11 @@ import { scheinView, scheinZuruecksetzen } from './views/schein';
 import { sperreView } from './views/sperre';
 
 const wurzel = document.getElementById('app')!;
+
+// Im Windows-Programm ein eigenes Layout: Seitenleiste, volle Breite,
+// Maus statt Daumen (styles.css, Abschnitt „Am PC"). Am Handy und im
+// Browser bleibt alles, wie es ist.
+if (AM_PC) document.documentElement.classList.add('am-pc');
 
 // Sinnbilder statt Emoji: die zeichnet jedes Handy anders, und neben den
 // Strichzeichnungen im Kopf sahen sie wie aus einer anderen App aus.
@@ -21,25 +27,43 @@ const REITER: Array<{ ansicht: Ansicht; sinnbild: IkonName; text: string }> = [
   { ansicht: 'einstellungen', sinnbild: 'regler', text: 'Einstellungen' },
 ];
 
+function reiterKnoepfe(): HTMLElement[] {
+  // Ein offener Schein gehoert zum Dashboard — in der Seitenleiste bleibt es markiert.
+  const aktuell = zustand.ansicht === 'schein' ? 'uebersicht' : zustand.ansicht;
+  return REITER.map((r) =>
+    h(
+      'button',
+      {
+        type: 'button',
+        'aria-current': aktuell === r.ansicht ? 'page' : undefined,
+        onclick: () => {
+          if (r.ansicht === 'uebersicht') scheinZuruecksetzen();
+          gehe(r.ansicht);
+        },
+      },
+      ikon(r.sinnbild),
+      h('span', { text: r.text }),
+    ),
+  );
+}
+
 function reiterleiste(): HTMLElement {
+  return h('nav', { class: 'reiter' }, ...reiterKnoepfe());
+}
+
+/** Am PC: Navigation links, wie man es von Windows-Programmen kennt. */
+function seitenleiste(): HTMLElement {
   return h(
     'nav',
-    { class: 'reiter' },
-    ...REITER.map((r) =>
-      h(
-        'button',
-        {
-          type: 'button',
-          'aria-current': zustand.ansicht === r.ansicht ? 'page' : undefined,
-          onclick: () => {
-            if (r.ansicht === 'uebersicht') scheinZuruecksetzen();
-            gehe(r.ansicht);
-          },
-        },
-        ikon(r.sinnbild),
-        h('span', { text: r.text }),
+    { class: 'seitenleiste' },
+    h('div', { class: 'seiten-marke' },
+      marke(),
+      h('div', {},
+        h('div', { class: 'seiten-titel', text: 'MaterialBlitz' }),
+        h('div', { class: 'seiten-wer', text: erstellerText(' · ') }),
       ),
     ),
+    ...reiterKnoepfe(),
   );
 }
 
@@ -63,10 +87,16 @@ async function zeichnen(): Promise<void> {
             ? await einstellungenView()
             : await uebersicht();
 
-    const schirm = h('div', { class: 'schirm' }, ...teile);
-    // Im Schein zaehlt jeder Millimeter Hoehe: dort keine Reiterleiste,
-    // der Pfeil oben links fuehrt zurueck. Im gesperrten Zustand ebenso wenig.
-    if (!gesperrt && zustand.ansicht !== 'schein') schirm.append(reiterleiste());
+    let schirm: HTMLElement;
+    if (AM_PC && !gesperrt) {
+      // Am PC ist Platz: die Seitenleiste steht immer, auch im Schein.
+      schirm = h('div', { class: 'schirm' }, seitenleiste(), h('main', { class: 'haupt' }, ...teile));
+    } else {
+      schirm = h('div', { class: 'schirm' }, ...teile);
+      // Im Schein zaehlt jeder Millimeter Hoehe: dort keine Reiterleiste,
+      // der Pfeil oben links fuehrt zurueck. Im gesperrten Zustand ebenso wenig.
+      if (!gesperrt && zustand.ansicht !== 'schein') schirm.append(reiterleiste());
+    }
 
     wurzel.replaceChildren(schirm);
   } finally {

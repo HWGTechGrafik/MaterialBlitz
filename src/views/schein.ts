@@ -100,6 +100,12 @@ async function rumpfBauen(
   baustelle: Baustelle, schein: Schein, offene: Schein[], erledigt: Schein[],
 ): Promise<HTMLElement> {
   const rumpf = h('div', { class: 'rumpf' });
+  // Am PC zwei Spalten: links was aufgeschrieben ist, rechts womit man
+  // aufschreibt. Am Handy loesen sich beide auf (display: contents) und
+  // alles steht untereinander wie bisher.
+  const links = h('div', { class: 'schein-spalte' });
+  const rechts = h('div', { class: 'schein-spalte' });
+  const raster = h('div', { class: 'schein-raster' }, links, rechts);
 
   // Mehrere offene Scheine gibt es nur, wenn einer uebernommen wurde.
   if (offene.length > 1) {
@@ -117,14 +123,14 @@ async function rumpfBauen(
         }),
       );
     }
-    rumpf.append(streifen);
+    links.append(streifen);
   }
 
   if (!schein.positionen.length) {
-    rumpf.append(h('div', { class: 'leer', text: `Noch nichts aufgeschrieben. Kachel ${AM_PC ? 'anklicken' : 'antippen'} genügt.` }));
+    links.append(h('div', { class: 'leer', text: `Noch nichts aufgeschrieben. Kachel ${AM_PC ? 'anklicken' : 'antippen'} genügt.` }));
   } else {
     schein.positionen.forEach((p, i) => {
-      rumpf.append(
+      links.append(
         h(
           'button',
           {
@@ -139,13 +145,13 @@ async function rumpfBauen(
         ),
       );
     });
-    rumpf.append(h('div', { class: 'hinweis', text: `Position ${AM_PC ? 'anklicken' : 'antippen'}, um Menge zu ändern oder zu löschen.` }));
+    links.append(h('div', { class: 'hinweis', text: `Position ${AM_PC ? 'anklicken' : 'antippen'}, um Menge zu ändern oder zu löschen.` }));
   }
 
   // Kacheln
   const liste = await kacheln(baustelle.id!, 10);
   if (liste.length) {
-    const raster = h('div', { class: 'kacheln' });
+    const kachelRaster = h('div', { class: 'kacheln' });
     for (const a of liste) {
       const zaehlbar = istZaehlbar(a.einheit);
       const knopf = h(
@@ -168,14 +174,14 @@ async function rumpfBauen(
           await mengeUebernehmen(a.name, 1, a.einheit);
         });
       }
-      raster.append(knopf);
+      kachelRaster.append(knopf);
     }
-    rumpf.append(raster);
+    rechts.append(kachelRaster);
   } else {
-    rumpf.append(h('div', { class: 'leer', text: 'Das Archiv ist noch leer. Über „Anderes Material suchen" den ersten Artikel anlegen.' }));
+    rechts.append(h('div', { class: 'leer', text: 'Das Archiv ist noch leer. Über „Anderes Material suchen" den ersten Artikel anlegen.' }));
   }
 
-  rumpf.append(
+  rechts.append(
     h('div', { class: 'such-reihe' },
       h('button', {
         class: 'knopf zweit scan-knopf', type: 'button', 'aria-label': 'Code scannen',
@@ -189,7 +195,7 @@ async function rumpfBauen(
   );
 
   if (erledigt.length) {
-    rumpf.append(
+    rechts.append(
       h('button', {
         class: 'reihe', type: 'button',
         onclick: () => historieZeigen(baustelle, erledigt),
@@ -204,12 +210,49 @@ async function rumpfBauen(
     );
   }
 
+  rumpf.append(raster);
   return rumpf;
 }
 
 // -------------------------------------------------------------------- Fuss
 
+/**
+ * Am PC tippt man die Menge lieber: Ziffern, Komma oder Punkt, Ruecktaste,
+ * Enter zum Uebernehmen, Esc zum Schliessen. Gilt, solange der Zifferblock
+ * offen ist und kein Eingabefeld den Fokus hat.
+ */
+let tastenHorcher: ((ev: KeyboardEvent) => void) | null = null;
+
+function tastaturLoesen(): void {
+  if (tastenHorcher) document.removeEventListener('keydown', tastenHorcher);
+  tastenHorcher = null;
+}
+
+function tastaturBinden(tasten: HTMLElement): void {
+  tastaturLoesen();
+  tastenHorcher = (ev) => {
+    // Schein verlassen, ohne den Block zu schliessen: dann nichts mehr tun —
+    // sonst uebernaehme Enter im Dashboard noch eine Menge.
+    if (!tasten.isConnected) { tastaturLoesen(); return; }
+    const ziel = ev.target;
+    if ((ziel instanceof Element && ziel.closest('input, textarea, select')) || document.querySelector('.schatten')) return;
+    const text = /^[0-9]$/.test(ev.key) ? ev.key
+      : ev.key === ',' || ev.key === '.' ? ','
+      : ev.key === 'Backspace' ? '⌫'
+      : null;
+    let knopf: HTMLButtonElement | null | undefined = null;
+    if (text) knopf = [...tasten.querySelectorAll('button')].find((b) => b.textContent === text);
+    else if (ev.key === 'Enter') knopf = tasten.querySelector<HTMLButtonElement>('.ok');
+    else if (ev.key === 'Escape') knopf = tasten.querySelector<HTMLButtonElement>('.ab');
+    if (!knopf) return;
+    ev.preventDefault();
+    knopf.click();
+  };
+  document.addEventListener('keydown', tastenHorcher);
+}
+
 async function fussBauen(baustelle: Baustelle, schein: Schein): Promise<HTMLElement | null> {
+  tastaturLoesen();
   if (block) return h('div', { class: 'fuss' }, zifferblock(schein));
   if (sucheOffen) return h('div', { class: 'fuss' }, await suchfeld(baustelle));
   return null;
@@ -227,6 +270,7 @@ function zifferblock(schein: Schein): HTMLElement {
 
   const anzeige = h('span', { class: 'block-wert', text: wert || '0' });
   const tasten = h('div', { class: 'tasten' });
+  tastaturBinden(tasten);
 
   for (const t of ['1', '2', '3', '4', '5', '6', '7', '8', '9', ',', '0', '⌫']) {
     tasten.append(

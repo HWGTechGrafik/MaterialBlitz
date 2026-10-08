@@ -6,7 +6,9 @@
  * Gebraucht nur fuer Texte: Am PC wird geklickt statt getippt, und Dateien
  * landen im Download-Ordner statt im Teilen-Dialog.
  */
-export const AM_PC = (window as { materialblitzWindows?: unknown }).materialblitzWindows === true;
+export const AM_PC = (window as { materialblitzWindows?: unknown }).materialblitzWindows === true
+  // Nur am Entwicklungsserver: …/MaterialBlitz/?pc zeigt das PC-Layout im Browser.
+  || (import.meta.env.DEV && new URLSearchParams(location.search).has('pc'));
 
 /** Meldungstext, wenn eine Datei nicht weitergegeben werden konnte. */
 export const NICHT_MOEGLICH: [string, string] = AM_PC
