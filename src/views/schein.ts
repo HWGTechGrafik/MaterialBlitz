@@ -6,7 +6,7 @@ import {
   istZaehlbar, positionHinzufuegen, runden,
   type Artikel, type Baustelle, type Kunde, type Position, type Schein,
 } from '../model';
-import { ersteller, erstellerText, gehe, neu, zustand } from '../store';
+import { ersteller, erstellerText, firmenkopf, gehe, neu, zustand } from '../store';
 import { blatt, h, ikon, kopfKnopf, kopfRechts, langDruck, melden } from '../ui';
 import { codeNormalisieren, qrLesen } from '../lib/codes';
 import { datum, menge as mengeText, zahl, zeit } from '../lib/format';
@@ -497,7 +497,7 @@ async function senden(baustelle: Baustelle, kunde: Kunde | undefined, schein: Sc
   const { pdfDatei } = await import('../lib/pdf');
   const dateien = [
     csvDatei(stand, baustelle, kunde, erstellerText()),
-    pdfDatei(stand, baustelle, e.firma, kunde, ersteller()),
+    pdfDatei(stand, baustelle, firmenkopf(e.firma), kunde, ersteller()),
   ];
 
   const ergebnis = await teilen(dateien);

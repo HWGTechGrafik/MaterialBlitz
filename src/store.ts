@@ -1,4 +1,4 @@
-import type { Einstellungen } from './model';
+import type { Einstellungen, Firma } from './model';
 import type { Lizenz } from './lib/lizenz';
 
 export type Ansicht = 'uebersicht' | 'schein' | 'katalog' | 'einstellungen' | 'sperre';
@@ -71,4 +71,14 @@ export function ersteller(): Ersteller {
 export function erstellerText(trenner = ', '): string {
   const { name, firma } = ersteller();
   return [name, firma].filter(Boolean).join(trenner);
+}
+
+/**
+ * Der Firmenkopf fuers PDF. Traegt die Lizenz eine Firma, gilt deren Name —
+ * er haengt am Schluessel und laesst sich in den Einstellungen nicht
+ * aendern. Anschrift und Telefon kommen weiter aus dem Firmenkopf.
+ */
+export function firmenkopf(firma: Firma): Firma {
+  const ausLizenz = zustand.lizenz?.firma;
+  return ausLizenz ? { ...firma, name: ausLizenz } : firma;
 }

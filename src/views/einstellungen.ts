@@ -28,7 +28,14 @@ export async function einstellungenView(): Promise<HTMLElement[]> {
     return { eingabe, knoten: h('label', { class: 'feld' }, h('span', { text: beschriftung }), eingabe) };
   };
 
-  const name = feld('Firmenname', e.firma.name, 'Elektro Muster GmbH');
+  // Traegt die Lizenz eine Firma, steht sie hier fest: sie haengt am
+  // Schluessel, nicht an diesem Geraet.
+  const lizenzFirma = zustand.lizenz?.firma;
+  const name = feld('Firmenname', lizenzFirma ?? e.firma.name, 'Elektro Muster GmbH');
+  if (lizenzFirma) {
+    name.eingabe.disabled = true;
+    name.knoten.append(h('small', { class: 'feld-hinweis', text: 'Kommt aus der Lizenz und lässt sich nicht ändern.' }));
+  }
   const strasse = feld('Straße', e.firma.strasse, 'Gewerbepark 12');
   const ort = feld('PLZ und Ort', e.firma.ort, '4020 Linz');
   const telefon = feld('Telefon', e.firma.telefon, '+43 732 123456');
@@ -36,7 +43,7 @@ export async function einstellungenView(): Promise<HTMLElement[]> {
   const speichern = async () => {
     zustand.einstellungen = await einstellungenSchreiben({
       firma: {
-        name: name.eingabe.value.trim(),
+        name: lizenzFirma ? e.firma.name : name.eingabe.value.trim(),
         strasse: strasse.eingabe.value.trim(),
         ort: ort.eingabe.value.trim(),
         telefon: telefon.eingabe.value.trim(),
