@@ -65,22 +65,24 @@ export async function inZwischenablage(text: string): Promise<boolean> {
 }
 
 /** Datei ueber einen Dateiauswahl-Dialog einlesen. */
-export function dateiWaehlen(): Promise<string | null> {
+export async function dateiWaehlen(): Promise<string | null> {
+  // Weit gefasst: am iPhone bekommen Anhaenge aus Mail und WhatsApp nicht
+  // immer den erwarteten Typ mit.
+  const datei = await dateiAuswaehlen('.txt,text/plain,application/json');
+  try {
+    return datei ? await datei.text() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Die Datei selbst — fuer alles, was kein Text ist, etwa eine Excel-Liste. */
+export function dateiAuswaehlen(typen: string): Promise<File | null> {
   return new Promise((fertig) => {
     const eingabe = document.createElement('input');
     eingabe.type = 'file';
-    // Weit gefasst: am iPhone bekommen Anhaenge aus Mail und WhatsApp nicht
-    // immer den erwarteten Typ mit.
-    eingabe.accept = '.txt,text/plain,application/json';
-    eingabe.addEventListener('change', async () => {
-      const datei = eingabe.files?.[0];
-      if (!datei) return fertig(null);
-      try {
-        fertig(await datei.text());
-      } catch {
-        fertig(null);
-      }
-    });
+    eingabe.accept = typen;
+    eingabe.addEventListener('change', () => fertig(eingabe.files?.[0] ?? null));
     eingabe.addEventListener('cancel', () => fertig(null));
     eingabe.click();
   });

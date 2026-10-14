@@ -347,6 +347,8 @@ mark {
 .knopf.gefahr { background: none; color: var(--warn); font-size: 15px; min-height: 44px; }
 .knopf-reihe { display: flex; gap: 8px; }
 .knopf-reihe .knopf { flex: 1; }
+/* Mehrere gleichrangige Taten in einer Karte, untereinander. */
+.knopf-stapel { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 
 /* Umschalter Projekt | Artikel oben im Anlege-Blatt: volle Daumenhoehe. */
 .umschalter {
@@ -402,6 +404,9 @@ mark {
   font-size: 13.5px; line-height: 1.45;
 }
 .merk.warnung { background: var(--warn-soft); color: var(--warn); }
+/* Hinweise beim Einlesen einer Liste: Zeile fuer Zeile, lange Codes brechen um. */
+.liste-hinweise { margin: 10px 0; overflow-wrap: anywhere; }
+.liste-hinweise > div { display: flex; flex-direction: column; gap: 4px; }
 
 /* Codes am Artikel (Register) */
 .codes { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
@@ -459,6 +464,13 @@ mark {
 }
 .scanner-knopf.an { background: #f0a33c; color: #000; }
 
+.etikett-schnell { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.etikett-schnell .knopf { width: auto; padding: 0 10px; }
+.etikett-schnell select {
+  margin-left: auto; min-height: 38px; padding: 0 8px;
+  border: 1px solid var(--line); border-radius: var(--r);
+  background: var(--ground); color: var(--ink); font: inherit; font-size: 15px;
+}
 .etiketten-liste { max-height: 40vh; overflow-y: auto; border-top: 1px solid var(--line); }
 .etikett-zeile { display: flex; align-items: center; gap: 12px; min-height: 50px; border-bottom: 1px solid var(--line); }
 .etikett-zeile input { width: 22px; height: 22px; flex: none; accent-color: var(--ader); }
@@ -618,6 +630,7 @@ mark {
 .am-pc .knopf.zweit:hover:not(:disabled) { background: var(--ader-soft); filter: none; }
 .am-pc .karte .knopf { width: auto; padding: 0 22px; }
 .am-pc .karte .knopf-reihe .knopf { flex: none; }
+.am-pc .knopf-stapel { flex-direction: row; flex-wrap: wrap; }
 .am-pc .feld input, .am-pc .feld select { min-height: 40px; }
 
 /* -------- Einstellungen und Archiv-Karten: zwei Spalten */

@@ -1,4 +1,5 @@
 import { artikelMitCode, db, einstellungenLesen } from '../db';
+import type { Artikel } from '../model';
 import { codeArt, codePruefen, eigenerCode, istEigenerCode } from '../lib/codes';
 import { teilen } from '../lib/share';
 import { AM_PC, NICHT_MOEGLICH } from '../lib/geraet';
@@ -62,7 +63,7 @@ async function katalogListe(rumpf: HTMLElement): Promise<void> {
   const artikel = (await db.artikel.toArray()).sort((a, b) => a.name.localeCompare(b.name, 'de'));
 
   if (!artikel.length) {
-    rumpf.append(h('div', { class: 'leer', text: 'Das Archiv wächst von selbst: was du in einem Projekt aufschreibst, steht danach hier.' }));
+    rumpf.append(h('div', { class: 'leer', text: 'Das Archiv wächst von selbst: was du in einem Projekt aufschreibst, steht danach hier. Viele Artikel auf einmal kommen über eine Excel-Liste herein – Einstellungen › Archiv als Excel.' }));
     return;
   }
 
@@ -252,6 +253,26 @@ async function etikettenDrucken(vorauswahl: number[] = []): Promise<void> {
     );
     return { a, an, art, el: h('label', { class: 'etikett-zeile' }, an, h('span', { class: 'nm', text: a.name }), art) };
   });
+  // Bei hundert Artikeln aus einer Excel-Liste kreuzt niemand einzeln an.
+  const ankreuzen = (wer: (a: Artikel) => boolean) => { for (const z of zeilen) z.an.checked = wer(z.a); };
+  const schnell = h('div', { class: 'etikett-schnell' },
+    h('button', { class: 'knopf leise', type: 'button', text: 'Alle', onclick: () => ankreuzen(() => true) }),
+    // Wer eine EAN hat, braucht kein Etikett: der Strichcode klebt schon am Material.
+    h('button', { class: 'knopf leise', type: 'button', text: 'Ohne Strichcode', onclick: () => ankreuzen((a) => !(a.codes ?? []).some((c) => !istEigenerCode(c))) }),
+    h('button', { class: 'knopf leise', type: 'button', text: 'Keine', onclick: () => ankreuzen(() => false) }),
+    h('select', {
+      'aria-label': 'Codeart für alle',
+      onchange: (ev: Event) => {
+        const wert = (ev.target as HTMLSelectElement).value;
+        if (wert) for (const z of zeilen) z.art.value = wert;
+        (ev.target as HTMLSelectElement).value = '';
+      },
+    },
+      h('option', { value: '', text: 'Alle als …' }),
+      h('option', { value: 'qr', text: 'QR' }),
+      h('option', { value: 'strich', text: 'Strichcode' }),
+    ),
+  );
   const bogen = h('select', {},
     ...BOEGEN.map((b) => h('option', { value: b.id, text: b.titel, selected: b.id === bogenWahl })),
   );
@@ -262,6 +283,7 @@ async function etikettenDrucken(vorauswahl: number[] = []): Promise<void> {
     [
       h('p', { class: 'hinweis', style: 'padding:0',
         text: 'Für Material ohne eigenen Code. Das Etikett trägt den eigenen Code des Artikels – fehlt er, wird er jetzt vergeben.' }),
+      schnell,
       h('div', { class: 'etiketten-liste' }, ...zeilen.map((z) => z.el)),
       h('label', { class: 'feld' }, h('span', { text: 'Papier' }), bogen),
       h('label', { class: 'feld' }, h('span', { text: 'Beginnen bei Etikett Nr. (angebrochener Bogen)' }), erstes),

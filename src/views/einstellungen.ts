@@ -6,7 +6,7 @@ import { datum, zeit } from '../lib/format';
 import { datumText, pruefen, saeubern } from '../lib/lizenz';
 import { fassungsZeile } from '../lib/fassung';
 
-import { dateiWaehlen, teilen } from '../lib/share';
+import { dateiAuswaehlen, dateiWaehlen, teilen } from '../lib/share';
 import { AM_PC, NICHT_MOEGLICH } from '../lib/geraet';
 import { archivPacken, sicherungPacken } from '../lib/transfer';
 import * as dropbox from '../lib/dropbox';
@@ -94,6 +94,7 @@ export async function einstellungenView(): Promise<HTMLElement[]> {
       dropboxKarte(),
       await sicherungKarte(),
       archivKarte(),
+      excelKarte(),
       einheitenKarte(e.einheiten),
       await katalogLeerenKarte(),
       lizenzKarte(e.ausweis ?? 'beides'),
@@ -230,6 +231,130 @@ function archivKarte(): HTMLElement {
         }
       },
     }),
+  );
+}
+
+// ------------------------------------------------------ Archiv als Excel
+
+/**
+ * Das Archiv ueber eine Excel-Liste befuellen und ausgeben. Am PC der
+ * naheliegende Weg fuer viele Artikel auf einmal; am Handy geht es auch,
+ * wenn die Liste etwa per Mail kommt.
+ */
+function excelKarte(): HTMLElement {
+  // Gleich anstossen, nicht erst beim Druck: am iPhone darf zwischen
+  // Fingertipp und Teilen-Dialog nicht viel Zeit vergehen.
+  const modul = import('../lib/archivliste');
+
+  const ausgeben = async (erzeugen: () => Promise<File>) => {
+    const ergebnis = await teilen([await erzeugen()]);
+    if (ergebnis === 'nicht-moeglich') melden(...NICHT_MOEGLICH);
+    if (ergebnis === 'geteilt' && AM_PC) {
+      melden('Gespeichert', 'Die Excel-Datei liegt im Download-Ordner.');
+    }
+  };
+
+  return h('div', { class: 'karte' },
+    h('h2', { text: 'Archiv als Excel' }),
+    h('p', { text: 'Viele Artikel auf einmal: die Vorlage in Excel befüllen – Bezeichnung, Einheit und auf Wunsch die Nummer unter dem Strichcode – und hier einlesen. Gelöscht wird dabei nichts.' }),
+    h('div', { class: 'knopf-stapel' },
+      h('button', {
+        class: 'knopf zweit', type: 'button', text: 'Vorlage herunterladen',
+        onclick: async () => ausgeben((await modul).vorlageErzeugen),
+      }),
+      h('button', {
+        class: 'knopf zweit', type: 'button', text: 'Archiv als Excel ausgeben',
+        onclick: async () => {
+          if (!(await db.artikel.count())) {
+            melden('Archiv leer', 'Im Archiv steht noch kein Artikel. Die Vorlage ist der Anfang.');
+            return;
+          }
+          await ausgeben((await modul).archivAlsExcel);
+        },
+      }),
+      h('button', {
+        class: 'knopf', type: 'button', text: 'Excel-Liste einlesen…',
+        onclick: () => void excelEinlesen(modul),
+      }),
+    ),
+  );
+}
+
+async function excelEinlesen(modul: Promise<typeof import('../lib/archivliste')>): Promise<void> {
+  const d = await dateiAuswaehlen(
+    '.xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain',
+  );
+  if (!d) return;
+  const { listeLesen, listeEinspielen, vorschau } = await modul;
+  const liste = await listeLesen(d);
+  if ('fehler' in liste) {
+    melden('Nicht eingelesen', liste.fehler);
+    return;
+  }
+  if (!liste.eintraege.length) {
+    melden('Keine Artikel', 'In der Liste steht unter den Spaltenköpfen kein Artikel.');
+    return;
+  }
+
+  const eigene = h('input', { type: 'checkbox' });
+  const zahlen = h('div', {});
+  const zeichnen = async () => {
+    const w = await vorschau(liste, eigene.checked);
+    const paar = (k: string, v: number) =>
+      h('div', { class: 'paar' }, h('span', { class: 'k', text: k }), h('span', { class: 'v', text: String(v) }));
+    zahlen.replaceChildren(...[
+      paar('Neue Artikel', w.neu),
+      paar('Vorhandene, die sich ändern', w.geaendert),
+      paar('Vorhandene, schon gleich', w.gleich),
+      w.gewandert ? paar('Codes, die den Artikel wechseln', w.gewandert) : null,
+      w.eigene ? paar('Neue eigene Codes', w.eigene) : null,
+      liste.neueEinheiten.length
+        ? h('div', { class: 'paar' }, h('span', { class: 'k', text: 'Neue Einheiten' }),
+            h('span', { class: 'v', text: liste.neueEinheiten.join(', ') }))
+        : null,
+    ].filter((x) => x !== null));
+  };
+  eigene.addEventListener('change', () => void zeichnen());
+  await zeichnen();
+
+  // Viele Hinweise erschlagen das Blatt; die ersten zeigen, was faul ist.
+  const MAX = 8;
+  const hinweise = liste.hinweise.length
+    ? h('div', { class: 'merk warnung liste-hinweise' },
+        h('span', { text: '⚠️' }),
+        h('div', {},
+          ...liste.hinweise.slice(0, MAX).map((t) => h('div', { text: t })),
+          liste.hinweise.length > MAX ? h('div', { text: `… und ${liste.hinweise.length - MAX} weitere.` }) : null,
+        ),
+      )
+    : null;
+
+  blatt(
+    'Excel-Liste einlesen',
+    [
+      h('p', { class: 'hinweis', style: 'padding:0',
+        text: `${liste.eintraege.length} Artikel in „${d.name}“. Gelöscht wird nichts; Codes kommen zu den vorhandenen dazu.` }),
+      zahlen,
+      hinweise,
+      h('label', { class: 'etikett-zeile' }, eigene,
+        h('span', { class: 'nm', text: 'Artikel ohne Code bekommen gleich einen eigenen Code (für Etiketten)' })),
+    ],
+    [
+      { text: 'Abbrechen', art: 'zweit' },
+      {
+        text: 'Einlesen',
+        tun: async () => {
+          const w = await listeEinspielen(liste, eigene.checked);
+          neu();
+          const teile = [
+            w.neu ? `${w.neu} neu` : '',
+            w.geaendert ? `${w.geaendert} ergänzt` : '',
+            w.gleich ? `${w.gleich} schon gleich` : '',
+          ].filter(Boolean).join(', ');
+          melden('Eingelesen', `${teile}.${w.eigene ? ` ${w.eigene} eigene Codes vergeben – Etiketten dazu druckt das Archiv.` : ''}`);
+        },
+      },
+    ],
   );
 }
 
