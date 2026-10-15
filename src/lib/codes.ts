@@ -1,6 +1,6 @@
 /**
  * Strich- und QR-Codes am Artikel. Sie dienen **nur zum Wiederfinden** in der
- * App und stehen nie auf Schein-PDF oder -CSV — sonst waere die Artikelnummer
+ * App und stehen nie auf Schein-PDF oder -Excel — sonst waere die Artikelnummer
  * durch die Hintertuer doch da (spec §2, §5.6). Nur die Excel-Liste des
  * Archivs traegt sie: die ist Pflegewerkzeug und geht an niemanden hinaus.
  */

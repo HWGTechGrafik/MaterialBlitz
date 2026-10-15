@@ -1,5 +1,5 @@
 import { db } from '../db';
-import type { Baustelle, VerlaufArt, VerlaufEintrag } from '../model';
+import { projektTitel, type Baustelle, type VerlaufArt, type VerlaufEintrag } from '../model';
 import { blatt, h, melden } from '../ui';
 import { datum, datumSortierbar, dateinameTeil, menge as mengeText, zeit } from '../lib/format';
 import { AM_PC, NICHT_MOEGLICH } from '../lib/geraet';
@@ -53,7 +53,11 @@ export async function verlaufZeigen(baustelle: Baustelle): Promise<void> {
   // Gleich anstossen: am iPhone darf zwischen Fingertipp und Teilen-Dialog
   // nicht viel Zeit vergehen.
   const xlsx = import('../lib/xlsx');
-  const [eintraege, artikel] = await Promise.all([verlaufDerBaustelle(baustelle.id!), db.artikel.toArray()]);
+  const [eintraege, artikel, kunde] = await Promise.all([
+    verlaufDerBaustelle(baustelle.id!), db.artikel.toArray(),
+    baustelle.kundeId ? db.kunden.get(baustelle.kundeId) : undefined,
+  ]);
+  const titel = projektTitel(baustelle, kunde?.name);
   if (!eintraege.length) {
     melden('Verlauf', 'Noch nichts mitgeschrieben. Ab jetzt steht hier jede Position mit Datum und Uhrzeit – aufgeschrieben, dazugezählt, geändert oder gelöscht.');
     return;
@@ -104,7 +108,7 @@ export async function verlaufZeigen(baustelle: Baustelle): Promise<void> {
   zeichnen();
 
   blatt(
-    `Verlauf · ${baustelle.ort}`,
+    `Verlauf · ${titel}`,
     [
       h('div', { class: 'verlauf-filter' },
         h('label', { class: 'feld', style: 'margin:0' }, suche),
@@ -113,7 +117,7 @@ export async function verlaufZeigen(baustelle: Baustelle): Promise<void> {
       liste,
     ],
     [
-      { text: 'Als Excel', art: 'zweit', tun: () => void ausgeben(baustelle, gefiltert(), ordnerVon, xlsx) },
+      { text: 'Als Excel', art: 'zweit', tun: () => void ausgeben(titel, gefiltert(), ordnerVon, xlsx) },
       { text: 'Schließen' },
     ],
   );
@@ -121,7 +125,7 @@ export async function verlaufZeigen(baustelle: Baustelle): Promise<void> {
 
 /** Der Verlauf als Excel-Liste, aelteste Zeile oben — so liest man ein Protokoll. */
 async function ausgeben(
-  baustelle: Baustelle,
+  titel: string,
   eintraege: VerlaufEintrag[],
   ordnerVon: Map<string, string | undefined>,
   modul: Promise<typeof import('../lib/xlsx')>,
@@ -157,7 +161,7 @@ async function ausgeben(
       { titel: 'Gerät', breite: 8 },
     ],
     zeilen,
-  }], `MaterialBlitz_Verlauf_${dateinameTeil(baustelle.ort)}_${datumSortierbar(Date.now())}.xlsx`);
+  }], `${dateinameTeil(titel)}_Verlauf_${datumSortierbar(Date.now())}.xlsx`);
   const ergebnis = await teilen([datei]);
   if (ergebnis === 'nicht-moeglich') melden(...NICHT_MOEGLICH);
   if (ergebnis === 'geteilt' && AM_PC) melden('Gespeichert', 'Die Excel-Datei liegt im Download-Ordner.');

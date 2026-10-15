@@ -4,14 +4,14 @@ import {
 } from '../db';
 import { ordnerListe } from '../lib/ordner';
 import {
-  istZaehlbar, positionHinzufuegen, runden,
+  istZaehlbar, positionHinzufuegen, projektTitel, projektUnter, runden,
   type Artikel, type Baustelle, type Kunde, type Position, type Schein,
 } from '../model';
 import { ersteller, erstellerText, firmenkopf, gehe, neu, zustand } from '../store';
 import { blatt, h, ikon, kopfKnopf, kopfRechts, langDruck, melden } from '../ui';
 import { codeNormalisieren, qrLesen } from '../lib/codes';
 import { datum, menge as mengeText, zahl, zeit } from '../lib/format';
-import { csvDatei } from '../lib/csv';
+import { kopfLogo } from '../lib/logo';
 import { inZwischenablage, teilen } from '../lib/share';
 import { AM_PC, NICHT_MOEGLICH } from '../lib/geraet';
 import { scheinPacken } from '../lib/transfer';
@@ -79,8 +79,8 @@ function kopfBauen(baustelle: Baustelle, kunde: Kunde | undefined, schein: Schei
       'div',
       { class: 'kopf-text' },
       h('div', { class: 'eyebrow', text: schein.herkunft ? `Übernommen · ${schein.herkunft}` : 'Offener Schein' }),
-      h('h1', { text: baustelle.ort + (schein.bezeichnung ? ` · ${schein.bezeichnung}` : '') }),
-      h('div', { class: 'unter', text: kunde?.name ?? 'ohne Kunden' }),
+      h('h1', { text: projektTitel(baustelle, kunde?.name) + (schein.bezeichnung ? ` · ${schein.bezeichnung}` : '') }),
+      h('div', { class: 'unter', text: projektUnter(baustelle, kunde?.name) }),
     ),
     kopfRechts(
       h('span', { class: 'zaehler', text: `${schein.positionen.length} Pos.` }),
@@ -629,10 +629,14 @@ async function senden(baustelle: Baustelle, kunde: Kunde | undefined, schein: Sc
   // jsPDF ist der groesste Brocken und wird erst hier gebraucht. Nachladen
   // statt mitschleppen: der Start auf der Baustelle bleibt leicht, und der
   // Service Worker hat die Datei trotzdem im Vorrat.
-  const { pdfDatei } = await import('../lib/pdf');
+  const [{ pdfDatei }, { scheinExcelDatei }] = await Promise.all([
+    import('../lib/pdf'), import('../lib/scheinexcel'),
+  ]);
+  const firma = firmenkopf(e.firma);
+  const logo = kopfLogo(e.logo);
   const dateien = [
-    csvDatei(stand, baustelle, kunde, erstellerText()),
-    pdfDatei(stand, baustelle, firmenkopf(e.firma), kunde, ersteller()),
+    scheinExcelDatei(stand, baustelle, firma, kunde, ersteller(), logo),
+    pdfDatei(stand, baustelle, firma, kunde, ersteller(), logo),
   ];
 
   const ergebnis = await teilen(dateien);
@@ -653,7 +657,7 @@ async function senden(baustelle: Baustelle, kunde: Kunde | undefined, schein: Sc
   // Am PC gibt es keinen Teilen-Dialog, der die Mail gleich oeffnet - also
   // sagen, wo die Dateien liegen und wie es weitergeht.
   if (AM_PC) {
-    melden('Gespeichert', 'CSV und PDF liegen im Download-Ordner – beide an die Mail ans Büro anhängen.'
+    melden('Gespeichert', 'Excel und PDF liegen im Download-Ordner – beide an die Mail ans Büro anhängen.'
       + (buero ? ' Die Adresse des Büros ist in der Zwischenablage: in der Mail ins An-Feld klicken, Strg+V.' : ''));
   }
 }

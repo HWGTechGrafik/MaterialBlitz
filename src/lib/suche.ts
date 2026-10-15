@@ -4,7 +4,7 @@
 // Trefferliste daraus (src/views/uebersicht.ts).
 
 import { db } from '../db';
-import type { Schein } from '../model';
+import { projektTitel, projektUnter, type Schein } from '../model';
 import { datum, menge as mengeText } from './format';
 
 /** Ab zwei Zeichen wird gesucht — auf ein einziges passt fast alles. */
@@ -190,25 +190,26 @@ export async function durchsuchen(begriff: string): Promise<Gruppe[]> {
 
   for (const b of sortiert) {
     const kunde = b.kundeId ? kundeVon.get(b.kundeId) : undefined;
+    const titel = projektTitel(b, kunde);
     const kopf = [b.ort, kunde ?? 'ohne Kunden'].join(' ');
     const funde: Fund[] = [];
 
     const projektTreffer = trifft(
       kopf,
       [
-        { feld: 'Ort', zeig: b.ort },
+        b.ort ? { feld: 'Ort', zeig: b.ort } : null,
         kunde ? { feld: 'Kunde', zeig: kunde } : null,
         b.abgeschlossen ? { feld: 'Stand', zeig: 'abgeschlossen' } : null,
       ],
       begriffe,
     );
     if (projektTreffer) {
-      const unter = kunde ?? 'ohne Kunden';
+      const unter = projektUnter(b, kunde);
       funde.push({
         art: 'projekt',
-        titel: b.ort,
+        titel,
         unter: b.abgeschlossen ? `${unter} · abgeschlossen` : unter,
-        treffer: begruendung(projektTreffer, b.ort, unter),
+        treffer: begruendung(projektTreffer, titel, unter),
         baustelleId: b.id!,
         wann: Number.MAX_SAFE_INTEGER, // das Projekt steht in seiner Gruppe oben
       });
@@ -268,7 +269,7 @@ export async function durchsuchen(begriff: string): Promise<Gruppe[]> {
     if (funde.length) {
       // Stabil: der Schein bleibt vor seinen eigenen Positionen stehen.
       funde.sort((x, y) => y.wann - x.wann);
-      gruppen.push({ titel: b.ort, unter: kunde ?? 'ohne Kunden', funde });
+      gruppen.push({ titel, unter: projektUnter(b, kunde), funde });
     }
   }
 

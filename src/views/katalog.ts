@@ -1,5 +1,5 @@
 import { artikelMitCode, db, einstellungenLesen } from '../db';
-import type { Artikel } from '../model';
+import { projektTitel, projektUnter, type Artikel } from '../model';
 import { codeArt, codePruefen, eigenerCode, istEigenerCode } from '../lib/codes';
 import { teilen } from '../lib/share';
 import { AM_PC, NICHT_MOEGLICH } from '../lib/geraet';
@@ -546,12 +546,13 @@ async function baustellenListe(rumpf: HTMLElement): Promise<void> {
   }
 
   for (const b of sortiert) {
+    const kunde = b.kundeId ? kundeVon.get(b.kundeId)?.name : undefined;
     rumpf.append(wischbar(
       h('button', { class: 'reihe', type: 'button', onclick: () => baustelleBearbeiten(b.id!) },
         h('div', {},
-          h('div', { class: 'haupt', text: b.ort }),
+          h('div', { class: 'haupt', text: projektTitel(b, kunde) }),
           h('div', { class: 'neben',
-            text: (b.kundeId ? kundeVon.get(b.kundeId)?.name ?? 'ohne Kunden' : 'ohne Kunden')
+            text: projektUnter(b, kunde)
               + (b.abgeschlossen ? ' · abgeschlossen' : '') }),
         ),
         h('span', { class: 'pfeil', html: '&rsaquo;' }),
@@ -568,6 +569,7 @@ async function baustelleBearbeiten(id: number): Promise<void> {
 
   const ort = h('input', { type: 'text', value: b.ort });
   const kundeFeld = h('input', { type: 'text', value: kunde?.name ?? '', placeholder: 'leer = ohne Kunden' });
+  ort.placeholder = 'leer = ohne Ort';
 
   const knoepfe: Array<{ text: string; art?: 'haupt' | 'zweit' | 'gefahr'; tun?: () => void }> = [
     { text: 'Abbrechen', art: 'zweit' },
@@ -580,9 +582,13 @@ async function baustelleBearbeiten(id: number): Promise<void> {
       text: 'Speichern',
       tun: async () => {
         const o = ort.value.trim();
-        if (!o) return;
-        let kundeId: number | undefined;
         const kn = kundeFeld.value.trim();
+        // Eines von beiden muss bleiben — sonst haette das Projekt keinen Namen.
+        if (!o && !kn) {
+          melden('Nicht gespeichert', 'Ort oder Kunde eintragen – eines genügt.');
+          return;
+        }
+        let kundeId: number | undefined;
         if (kn) {
           const da = await db.kunden.where('name').equals(kn).first();
           kundeId = da?.id ?? (await db.kunden.add({ name: kn }));
@@ -639,7 +645,7 @@ export async function projektLoeschen(id: number, zurueck?: () => void): Promise
     'Projekt löschen?',
     [
       h('p', { class: 'hinweis', style: 'padding:0',
-        text: `„${b.ort}“${kunde ? ` (${kunde.name})` : ''} wird gelöscht. Das lässt sich nicht rückgängig machen.` }),
+        text: `„${projektTitel(b, kunde?.name)}“${kunde && b.ort ? ` (${kunde.name})` : ''} wird gelöscht. Das lässt sich nicht rückgängig machen.` }),
       // Leere Scheine entstehen beim blossen Oeffnen - die sind keine Warnung wert.
       positionen
         ? h('div', { class: 'merk warnung' },

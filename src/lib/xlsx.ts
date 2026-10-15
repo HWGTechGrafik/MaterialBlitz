@@ -32,6 +32,29 @@ export interface Tabelle {
   kopf?: boolean;
   /** Lange Texte umbrechen (fuer die Anleitung). */
   umbruch?: boolean;
+  /**
+   * Zeilen ueber der Kopfzeile — ein Briefkopf wie auf dem PDF. Die Tabelle
+   * rutscht darunter; Filter und festgehaltene Kopfzeile wandern mit.
+   */
+  vorspann?: Vorspann[];
+  /** Bild links oben in der ersten Zeile, etwa das Firmenlogo. */
+  bild?: Bild;
+}
+
+export interface Vorspann {
+  werte: string[];
+  /** `paar`: Beschriftung grau in der ersten Zelle, der Wert fett daneben. */
+  stil?: 'fett' | 'titel' | 'grau' | 'paar';
+  /** Zeilenhoehe in Punkt — fuer die Zeile, in der das Bild sitzt. */
+  hoehe?: number;
+}
+
+export interface Bild {
+  daten: Uint8Array;
+  typ: 'png' | 'jpeg';
+  /** Angezeigte Groesse in Pixeln. */
+  breite: number;
+  hoehe: number;
 }
 
 // Stilnummern in styles.xml unten — Reihenfolge von cellXfs.
@@ -39,18 +62,34 @@ const S_NORMAL = 0;
 const S_KOPF = 1;
 const S_TEXT = 2;
 const S_UMBRUCH = 3;
+const S_FETT = 4;
+const S_TITEL = 5;
+const S_GRAU = 6;
+
+function vorspannStil(v: Vorspann, spalte: number): number {
+  switch (v.stil) {
+    case 'fett': return S_FETT;
+    case 'titel': return S_TITEL;
+    case 'grau': return S_GRAU;
+    case 'paar': return spalte ? S_FETT : S_GRAU;
+    default: return S_NORMAL;
+  }
+}
 
 const STILE = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>
+<fonts count="4"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="15"/><color rgb="FF102B49"/><name val="Calibri"/></font><font><sz val="10"/><color rgb="FF788696"/><name val="Calibri"/></font></fonts>
 <fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE8EDF2"/></patternFill></fill></fills>
 <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-<cellXfs count="4">
+<cellXfs count="7">
 <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
 <xf numFmtId="49" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyNumberFormat="1"/>
 <xf numFmtId="49" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
 <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf>
+<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+<xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>
 </cellXfs>
 <cellStyles count="1"><cellStyle name="Standard" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>`;
@@ -69,17 +108,31 @@ function spaltenName(i: number): string {
   return s;
 }
 
-function blattXml(t: Tabelle): string {
+/** Zeilennummer der Kopfzeile — 1, ausser ein Vorspann steht darueber. */
+function kopfZeile(t: Tabelle): number {
+  return (t.vorspann?.length ?? 0) + 1;
+}
+
+/** Bereich von Kopfzeile bis letzter Zeile, fuer Filter und Filtername. */
+function filterBereich(t: Tabelle, absolut = false): string {
+  const k = kopfZeile(t);
   const letzte = spaltenName(t.spalten.length - 1);
+  const ende = k + Math.max(t.zeilen.length, 1);
+  return absolut ? `$A$${k}:$${letzte}$${ende}` : `A${k}:${letzte}${ende}`;
+}
+
+function blattXml(t: Tabelle, mitBild: boolean): string {
   const cols = t.spalten.map((s, i) =>
     `<col min="${i + 1}" max="${i + 1}" width="${s.breite}" customWidth="1"${s.text ? ` style="${S_TEXT}"` : ''}/>`,
   ).join('');
 
-  const zeile = (werte: string[], r: number, stil: (i: number) => number) =>
-    `<row r="${r}">` + werte.map((w, i) => {
+  // Im Vorspann ist auch eine Ziffernfolge Text — die Spalte darunter mag
+  // Zahlen fuehren, der Briefkopf nicht.
+  const zeile = (werte: string[], r: number, stil: (i: number) => number, vorspann?: Vorspann) =>
+    `<row r="${r}"${vorspann?.hoehe ? ` ht="${vorspann.hoehe}" customHeight="1"` : ''}>` + werte.map((w, i) => {
       const s = stil(i);
       const ref = `${spaltenName(i)}${r}`;
-      if (t.spalten[i]?.zahl && /^-?\d+(\.\d+)?$/.test(w)) return `<c r="${ref}"><v>${w}</v></c>`;
+      if (!vorspann && t.spalten[i]?.zahl && /^-?\d+(\.\d+)?$/.test(w)) return `<c r="${ref}"><v>${w}</v></c>`;
       // Inline-Text statt sharedStrings: eine Datei weniger, Excel liest beides.
       return w === ''
         ? (s ? `<c r="${ref}" s="${s}"/>` : '')
@@ -87,15 +140,23 @@ function blattXml(t: Tabelle): string {
     }).join('') + '</row>';
 
   const koerperStil = (i: number) => (t.umbruch ? S_UMBRUCH : t.spalten[i]?.text ? S_TEXT : S_NORMAL);
+  const k = kopfZeile(t);
   const zeilen = [
-    zeile(t.spalten.map((s) => s.titel), 1, () => (t.kopf ? S_KOPF : koerperStil(0))),
-    ...t.zeilen.map((z, i) => zeile(z, i + 2, koerperStil)),
+    ...(t.vorspann ?? []).map((v, i) =>
+      zeile(v.werte, i + 1, (sp) => vorspannStil(v, sp), v)),
+    zeile(t.spalten.map((s) => s.titel), k, () => (t.kopf ? S_KOPF : koerperStil(0))),
+    ...t.zeilen.map((z, i) => zeile(z, k + 1 + i, koerperStil)),
   ].join('');
 
-  const ansicht = t.kopf
-    ? '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
-    : '<sheetViews><sheetView workbookViewId="0"/></sheetViews>';
-  const filter = t.kopf ? `<autoFilter ref="A1:${letzte}${Math.max(t.zeilen.length + 1, 2)}"/>` : '';
+  // Ohne Gitternetz, sobald ein Briefkopf darueber steht: dann soll es
+  // aussehen wie ein Schein, nicht wie ein Rechenblatt.
+  const gitter = t.vorspann?.length ? ' showGridLines="0"' : '';
+  // Festgehalten nur ohne Briefkopf — ein Dutzend starrer Zeilen liesse am
+  // Laptop kaum Platz fuer die Tabelle.
+  const ansicht = t.kopf && !t.vorspann?.length
+    ? `<sheetViews><sheetView${gitter} workbookViewId="0"><pane ySplit="${k}" topLeftCell="A${k + 1}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`
+    : `<sheetViews><sheetView${gitter} workbookViewId="0"/></sheetViews>`;
+  const filter = t.kopf ? `<autoFilter ref="${filterBereich(t)}"/>` : '';
 
   // Eine Liste in der Formel darf hoechstens 255 Zeichen haben und kein
   // Komma enthalten — sonst lieber keine Auswahl als eine kaputte Datei.
@@ -111,10 +172,46 @@ function blattXml(t: Tabelle): string {
     }
   }
 
+  // Mit Briefkopf ist es ein Schein, der auch ausgedruckt wird: quer und
+  // auf eine Seite Breite, sonst landen die hinteren Spalten auf Blatt zwei.
+  const schein = Boolean(t.vorspann?.length);
+  const seite = schein
+    ? '<pageMargins left="0.5" right="0.5" top="0.6" bottom="0.6" header="0.3" footer="0.3"/>'
+      + '<pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/>'
+    : '';
+
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
-    + ansicht + `<cols>${cols}</cols><sheetData>${zeilen}</sheetData>` + filter + pruefung
+    + (schein ? '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>' : '')
+    + ansicht + `<cols>${cols}</cols><sheetData>${zeilen}</sheetData>` + filter + pruefung + seite
+    + (mitBild ? '<drawing r:id="rId1"/>' : '')
     + '</worksheet>';
+}
+
+/** 1 Pixel = 9525 EMU, die Masseinheit von DrawingML. */
+const EMU = 9525;
+
+function zeichnungXml(bild: Bild): string {
+  // oneCellAnchor: das Bild haengt an A1 und behaelt seine Groesse, auch
+  // wenn jemand Spalten breiter zieht.
+  const cx = Math.round(bild.breite) * EMU;
+  const cy = Math.round(bild.hoehe) * EMU;
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+    + '<xdr:oneCellAnchor>'
+    + `<xdr:from><xdr:col>0</xdr:col><xdr:colOff>${4 * EMU}</xdr:colOff><xdr:row>0</xdr:row><xdr:rowOff>${4 * EMU}</xdr:rowOff></xdr:from>`
+    + `<xdr:ext cx="${cx}" cy="${cy}"/>`
+    + '<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="2" name="Logo"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>'
+    + '<xdr:blipFill><a:blip r:embed="rId1"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>'
+    + `<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr>`
+    + '</xdr:pic><xdr:clientData/></xdr:oneCellAnchor></xdr:wsDr>';
+}
+
+function beziehung(typ: string, ziel: string): string {
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    + `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/${typ}" Target="${ziel}"/>`
+    + '</Relationships>';
 }
 
 /** Die fertige .xlsx als Datei zum Teilen bzw. Speichern. */
@@ -135,9 +232,12 @@ export function xlsxErzeugen(tabellen: Tabelle[]): Uint8Array {
       + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
       + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
       + '<Default Extension="xml" ContentType="application/xml"/>'
+      + '<Default Extension="png" ContentType="image/png"/>'
+      + '<Default Extension="jpeg" ContentType="image/jpeg"/>'
       + '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
       + '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
       + nummern.map((i) => `<Override PartName="/xl/worksheets/sheet${i}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')
+      + tabellen.map((t, i) => t.bild ? `<Override PartName="/xl/drawings/drawing${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>` : '').join('')
       + '</Types>'),
     '_rels/.rels': strToU8(
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -150,7 +250,7 @@ export function xlsxErzeugen(tabellen: Tabelle[]): Uint8Array {
       + '<sheets>' + tabellen.map((t, i) => `<sheet name="${xml(t.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('') + '</sheets>'
       // Der Filter braucht diesen Namen, sonst repariert Excel die Datei beim Oeffnen.
       + '<definedNames>' + tabellen.map((t, i) => t.kopf
-        ? `<definedName name="_xlnm._FilterDatabase" localSheetId="${i}" hidden="1">'${xml(t.name)}'!$A$1:$${spaltenName(t.spalten.length - 1)}$${Math.max(t.zeilen.length + 1, 2)}</definedName>`
+        ? `<definedName name="_xlnm._FilterDatabase" localSheetId="${i}" hidden="1">'${xml(t.name)}'!${filterBereich(t, true)}</definedName>`
         : '').join('') + '</definedNames>'
       + '</workbook>'),
     'xl/_rels/workbook.xml.rels': strToU8(
@@ -161,7 +261,16 @@ export function xlsxErzeugen(tabellen: Tabelle[]): Uint8Array {
       + '</Relationships>'),
     'xl/styles.xml': strToU8(STILE),
   };
-  tabellen.forEach((t, i) => { dateien[`xl/worksheets/sheet${i + 1}.xml`] = strToU8(blattXml(t)); });
+  tabellen.forEach((t, i) => {
+    const nr = i + 1;
+    dateien[`xl/worksheets/sheet${nr}.xml`] = strToU8(blattXml(t, Boolean(t.bild)));
+    if (!t.bild) return;
+    const bildDatei = `bild${nr}.${t.bild.typ}`;
+    dateien[`xl/media/${bildDatei}`] = t.bild.daten;
+    dateien[`xl/drawings/drawing${nr}.xml`] = strToU8(zeichnungXml(t.bild));
+    dateien[`xl/drawings/_rels/drawing${nr}.xml.rels`] = strToU8(beziehung('image', `../media/${bildDatei}`));
+    dateien[`xl/worksheets/_rels/sheet${nr}.xml.rels`] = strToU8(beziehung('drawing', `../drawings/drawing${nr}.xml`));
+  });
   return zipSync(dateien, { level: 6 });
 }
 

@@ -10,7 +10,7 @@ export interface Artikel {
   /**
    * Strich- und QR-Codes, an denen die App den Artikel wiedererkennt —
    * normalisiert (lib/codes.ts). Ein Code gehoert hoechstens **einem**
-   * Artikel. Nur zum Wiederfinden: nie auf PDF oder CSV.
+   * Artikel. Nur zum Wiederfinden: nie auf PDF oder Excel des Scheins.
    */
   codes?: string[];
   /**
@@ -68,6 +68,10 @@ export interface Kunde {
 
 export interface Baustelle {
   id?: number;
+  /**
+   * Leer bei einem reinen Kundenprojekt — manche Arbeit hat keine feste
+   * Adresse, nur einen Auftraggeber. Ort oder Kunde muss aber da sein.
+   */
   ort: string;
   /** Optional — Werkstatt, Lager und Eigenbedarf haben keinen Kunden. */
   kundeId?: number;
@@ -76,6 +80,19 @@ export interface Baustelle {
   versteckt?: boolean;
   /** Zeitstempel der letzten Benutzung — das Dashboard sortiert danach. */
   zuletzt: number;
+}
+
+/**
+ * Wie ein Projekt in Listen, Kopfzeilen und Dateinamen heisst: der Ort,
+ * bei einem reinen Kundenprojekt der Kunde.
+ */
+export function projektTitel(b: Pick<Baustelle, 'ort'>, kunde?: string): string {
+  return b.ort || kunde || 'ohne Namen';
+}
+
+/** Die Zeile darunter — was der Titel nicht schon sagt. */
+export function projektUnter(b: Pick<Baustelle, 'ort'>, kunde?: string): string {
+  return b.ort ? kunde ?? 'ohne Kunden' : 'ohne Ort';
 }
 
 /**
@@ -118,9 +135,20 @@ export interface Firma {
 /** Was aus der Lizenz auf Schein und Dashboard steht. */
 export type Ausweis = 'beides' | 'name' | 'firma';
 
+/** Ein Bild, verkleinert und als Datenstring — so passt es in Sicherung und Dropbox. */
+export interface Logo {
+  /** data:image/png oder data:image/jpeg */
+  bild: string;
+  /** Pixel, fuer das Seitenverhaeltnis auf PDF und Excel. */
+  breite: number;
+  hoehe: number;
+}
+
 export interface Einstellungen {
   id?: number;
   firma: Firma;
+  /** Firmenlogo fuer PDF und Excel. Fehlt es, steht dort das MaterialBlitz-Zeichen. */
+  logo?: Logo;
   /** Feste Liste plus selbst ergaenzte. */
   einheiten: string[];
   lizenz?: string;

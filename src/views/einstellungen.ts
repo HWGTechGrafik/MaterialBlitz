@@ -1,10 +1,11 @@
 import { db, einstellungenLesen, einstellungenSchreiben } from '../db';
-import { EINHEITEN_STANDARD, type Ausweis } from '../model';
+import { EINHEITEN_STANDARD, type Ausweis, type Logo } from '../model';
 import { neu, zustand } from '../store';
 import { blatt, h, melden } from '../ui';
 import { datum, zeit } from '../lib/format';
 import { datumText, pruefen, saeubern } from '../lib/lizenz';
 import { fassungsZeile } from '../lib/fassung';
+import { logoEinlesen } from '../lib/logo';
 
 import { dateiAuswaehlen, dateiWaehlen, teilen } from '../lib/share';
 import { AM_PC, NICHT_MOEGLICH } from '../lib/geraet';
@@ -75,17 +76,19 @@ export async function einstellungenView(): Promise<HTMLElement[]> {
 
       h('div', { class: 'karte' },
         h('h2', { text: 'Firmenkopf' }),
-        h('p', { text: 'Steht oben auf jedem PDF, das ins Büro geht.' }),
+        h('p', { text: 'Steht oben auf jedem PDF und jeder Excel-Datei, die ins Büro geht.' }),
         name.knoten, strasse.knoten, ort.knoten, telefon.knoten,
         h('button', { class: 'knopf', type: 'button', text: 'Speichern', onclick: speichern }),
       ),
+
+      logoKarte(e.logo),
 
       // Eigene Karte, nicht beim Firmenkopf: Die Adresse steht **nicht** auf
       // dem PDF, sie betrifft nur den Weg dorthin.
       h('div', { class: 'karte' },
         h('h2', { text: 'Ans Büro' }),
         h('p', { text: AM_PC
-          ? 'Am PC legt die App CSV und PDF im Download-Ordner ab; von dort kommen sie als Anhang in die Mail. Die Adresse liegt beim Senden in der Zwischenablage und ist im An-Feld nur noch einzufügen.'
+          ? 'Am PC legt die App Excel und PDF im Download-Ordner ab; von dort kommen sie als Anhang in die Mail. Die Adresse liegt beim Senden in der Zwischenablage und ist im An-Feld nur noch einzufügen.'
           : 'Der Teilen-Dialog des Handys kennt kein Empfängerfeld — Anhänge und Adressfelder schließen einander aus. Darum legt die App die Adresse beim Senden in die Zwischenablage; in der Mail ist sie dann nur noch ins An-Feld einzusetzen. Ab der zweiten Mail schlägt das Handy sie ohnehin selbst vor.' }),
         buero.knoten,
         h('button', { class: 'knopf', type: 'button', text: 'Speichern', onclick: bueroSpeichern }),
@@ -106,6 +109,46 @@ export async function einstellungenView(): Promise<HTMLElement[]> {
   );
 
   return [kopf, rumpf];
+}
+
+// ----------------------------------------------------------------- Logo
+
+/**
+ * Das eigene Firmenlogo fuer PDF und Excel. Gespeichert wird es sofort beim
+ * Waehlen — ein eigener Speichern-Knopf waere hier nur ein Schritt mehr.
+ * Es reist mit Sicherung und Dropbox auf das andere Geraet.
+ */
+function logoKarte(logo?: Logo): HTMLElement {
+  const waehlen = async () => {
+    const datei = await dateiAuswaehlen('image/png,image/jpeg,image/svg+xml,image/webp,image/gif');
+    if (!datei) return;
+    const neues = await logoEinlesen(datei);
+    if (!neues) {
+      melden('Das klappt nicht', 'Die Datei ließ sich nicht als Bild lesen. Am besten ein PNG oder JPG nehmen.');
+      return;
+    }
+    zustand.einstellungen = await einstellungenSchreiben({ logo: neues });
+    neu();
+    melden('Logo gespeichert', 'Es steht ab sofort oben links auf jedem PDF und jeder Excel-Datei.');
+  };
+  const entfernen = async () => {
+    zustand.einstellungen = await einstellungenSchreiben({ logo: undefined });
+    neu();
+  };
+
+  return h('div', { class: 'karte' },
+    h('h2', { text: 'Firmenlogo' }),
+    h('p', { text: logo
+      ? 'Steht oben links auf PDF und Excel – anstelle des MaterialBlitz-Zeichens.'
+      : 'Noch kein eigenes Logo: Auf PDF und Excel steht das MaterialBlitz-Zeichen. Am besten ein PNG mit durchsichtigem Hintergrund.' }),
+    logo ? h('div', { class: 'logo-vorschau' }, h('img', { src: logo.bild, alt: 'Firmenlogo' })) : null,
+    h('div', { class: 'knopf-reihe' },
+      h('button', { class: 'knopf', type: 'button', text: logo ? 'Anderes Logo …' : 'Logo wählen …', onclick: waehlen }),
+      logo
+        ? h('button', { class: 'knopf gefahr', type: 'button', text: 'Entfernen', onclick: entfernen })
+        : null,
+    ),
+  );
 }
 
 // --------------------------------------------------------------- Dropbox

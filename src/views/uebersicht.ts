@@ -1,5 +1,5 @@
 import { db, einstellungenLesen, einstellungenSchreiben } from '../db';
-import { SICHERUNG_ARTIKEL, SICHERUNG_TAGE, type Baustelle, type Kunde } from '../model';
+import { SICHERUNG_ARTIKEL, SICHERUNG_TAGE, projektTitel, projektUnter, type Baustelle, type Kunde } from '../model';
 import { erstellerText, gehe, neu, zustand } from '../store';
 import { blatt, h, ikon, kopfKnopf, kopfRechts, marke, melden, umschalter, wischbar, type NeuArt } from '../ui';
 import { artikelBearbeiten, projektLoeschen } from './katalog';
@@ -241,8 +241,8 @@ async function projektListe(): Promise<HTMLElement[]> {
         h(
           'div',
           {},
-          h('div', { class: 'haupt', text: b.ort }),
-          h('div', { class: 'neben', text: kunde?.name ?? 'ohne Kunden' }),
+          h('div', { class: 'haupt', text: projektTitel(b, kunde?.name) }),
+          h('div', { class: 'neben', text: projektUnter(b, kunde?.name) }),
         ),
         h('span', {
           class: 'zaehler',
@@ -304,13 +304,16 @@ async function sicherungFaellig(): Promise<HTMLElement | null> {
  */
 export function baustelleAnlegen(oeffnen = true, oben?: HTMLElement): void {
   const ort = h('input', { type: 'text', placeholder: 'z.B. Hauptstraße 5' });
-  const kunde = h('input', { type: 'text', placeholder: 'leer lassen für Werkstatt o.ä.' });
+  const kunde = h('input', { type: 'text', placeholder: 'z.B. Familie Huber' });
   blatt(
     'Neues Projekt',
     [
       oben ?? null,
       h('label', { class: 'feld' }, h('span', { text: 'Ort' }), ort),
-      h('label', { class: 'feld' }, h('span', { text: 'Kunde (optional)' }), kunde),
+      h('label', { class: 'feld' }, h('span', { text: 'Kunde' }), kunde),
+      // Werkstatt und Lager haben keinen Kunden, manche Arbeit keine feste
+      // Adresse — eines von beiden reicht.
+      h('p', { class: 'hinweis', style: 'padding:0', text: 'Ort, Kunde oder beides – eines genügt.' }),
     ],
     [
       { text: 'Abbrechen', art: 'zweit' },
@@ -318,9 +321,12 @@ export function baustelleAnlegen(oeffnen = true, oben?: HTMLElement): void {
         text: 'Anlegen',
         tun: async () => {
           const o = ort.value.trim();
-          if (!o) return;
-          let kundeId: number | undefined;
           const kn = kunde.value.trim();
+          if (!o && !kn) {
+            melden('Nicht angelegt', 'Ort oder Kunde eintragen – eines genügt.');
+            return;
+          }
+          let kundeId: number | undefined;
           if (kn) {
             const da = await db.kunden.where('name').equals(kn).first();
             kundeId = da?.id ?? (await db.kunden.add({ name: kn }));

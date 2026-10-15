@@ -46,7 +46,7 @@ export function freigeschaltet(): boolean {
   return Boolean(zustand.lizenz);
 }
 
-/** Wer einen Schein erstellt hat — so, wie es auf PDF und CSV steht. */
+/** Wer einen Schein erstellt hat — so, wie es auf PDF und Excel steht. */
 export interface Ersteller {
   name: string | null;
   firma: string | null;
@@ -67,7 +67,7 @@ export function ersteller(): Ersteller {
   };
 }
 
-/** Der Ersteller als eine Zeile, etwa fuer CSV, Fusszeile und Dashboard. */
+/** Der Ersteller als eine Zeile, etwa fuer Excel, Fusszeile und Dashboard. */
 export function erstellerText(trenner = ', '): string {
   const { name, firma } = ersteller();
   return [name, firma].filter(Boolean).join(trenner);

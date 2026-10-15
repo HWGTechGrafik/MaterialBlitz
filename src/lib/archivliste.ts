@@ -10,7 +10,7 @@ import { csvLesen, istZip, xlsxDatei, xlsxLesen, type Tabelle } from './xlsx';
  * und Einlesen. Gedacht fuers Buero, wo Artikel ohnehin in Listen stehen —
  * etwa vom Grosshaendler mit EAN.
  *
- * Anders als Schein-PDF und -CSV traegt diese Liste die Codes: sie ist ein
+ * Anders als Schein-PDF und -Excel traegt diese Liste die Codes: sie ist ein
  * Pflegewerkzeug fuers Archiv, nichts, was zum Kunden geht.
  *
  * Einlesen kommt nur **dazu**, wie beim weitergegebenen Archiv: geloescht

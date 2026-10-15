@@ -55,6 +55,19 @@ export function dateinameTeil(text: string): string {
   );
 }
 
+/**
+ * Dateiname fuer PDF und Excel eines Scheins: zuerst das Projekt und die
+ * Bezeichnung (etwa "Top 12") — daran erkennt das Buero den Anhang in der
+ * Mail. Datum und Uhrzeit dahinter halten zwei Scheine desselben Projekts
+ * auseinander.
+ */
+export function scheinDateiname(projekt: string, bezeichnung: string | undefined, stand: number, endung: string): string {
+  const teile = [dateinameTeil(projekt)];
+  if (bezeichnung) teile.push(dateinameTeil(bezeichnung));
+  teile.push(datumSortierbar(stand), zeitKompakt(stand));
+  return `${teile.join('_')}.${endung}`;
+}
+
 export function tageSeit(ms: number): number {
   return Math.floor((Date.now() - ms) / 86_400_000);
 }

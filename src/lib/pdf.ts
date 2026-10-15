@@ -1,10 +1,10 @@
 import { jsPDF } from 'jspdf';
 // Funktionsform statt doc.autoTable(): nur die ist in 3.x sauber typisiert.
 import autoTable from 'jspdf-autotable';
-import type { Baustelle, Firma, Kunde, Schein } from '../model';
+import { projektTitel, type Baustelle, type Firma, type Kunde, type Logo, type Schein } from '../model';
 import type { Ersteller } from '../store';
-import { datum, dateinameTeil, datumSortierbar, menge, zeit, zeitKompakt } from './format';
-import { markeDataURL } from './marke';
+import { datum, menge, scheinDateiname, zeit } from './format';
+import { eingepasst, logoTyp } from './logo';
 
 const NAVY: [number, number, number] = [16, 43, 73];
 const GRAU: [number, number, number] = [120, 134, 150];
@@ -28,6 +28,8 @@ export function pdfErzeugen(
   firma: Firma,
   kunde?: Kunde,
   ersteller: Ersteller = { name: null, firma: null },
+  /** Firmenlogo oder MaterialBlitz-Zeichen — siehe kopfLogo(). */
+  logo?: Logo | null,
 ): jsPDF {
   // compress steht sonst auf false — derselbe Schein waere achtmal so gross.
   const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
@@ -62,19 +64,21 @@ export function pdfErzeugen(
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
       doc.setTextColor(...GRAU);
-      const teile = ['Materialschein', baustelle.ort];
+      const teile = ['Materialschein', projektTitel(baustelle, kunde?.name)];
       if (schein.bezeichnung) teile.push(schein.bezeichnung);
       teile.push(datum(stand));
       doc.text(teile.join(' · '), 15, 14);
       return;
     }
 
-    const marke = markeDataURL();
     let textX = 15;
-    if (marke) {
+    if (logo) {
       try {
-        doc.addImage(marke, 'PNG', 15, 15, 16, 16);
-        textX = 34;
+        // Ein breites Firmenlogo darf breiter werden als das quadratische
+        // Zeichen, aber nicht hoeher — der Kasten rechts beginnt bei 36 mm.
+        const g = eingepasst(logo, 55, 16);
+        doc.addImage(logo.bild, logoTyp(logo) === 'jpeg' ? 'JPEG' : 'PNG', 15, 15, g.breite, g.hoehe);
+        textX = 15 + g.breite + 3;
       } catch {
         // Ohne Bildmarke sieht der Kopf schlichter aus — kein Grund,
         // den Schein nicht zu erzeugen.
@@ -83,14 +87,16 @@ export function pdfErzeugen(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
     doc.setTextColor(...NAVY);
-    doc.text(firma.name || 'MaterialBlitz', textX, 21);
+    // Neben einem breiten Logo bleibt weniger Platz — abschneiden statt ueber den Rand.
+    const platz = breite - 15 - textX;
+    doc.text(doc.splitTextToSize(firma.name || 'MaterialBlitz', platz)[0] ?? '', textX, 21);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.5);
     doc.setTextColor(...GRAU);
     const anschrift = [firma.strasse, firma.ort, firma.telefon && `Tel. ${firma.telefon}`]
       .filter(Boolean)
       .join(' · ');
-    if (anschrift) doc.text(anschrift, textX, 26);
+    if (anschrift) doc.text(doc.splitTextToSize(anschrift, platz)[0] ?? '', textX, 26);
 
     // Eckdaten-Kasten rechts
     const kx = breite - 90;
@@ -98,11 +104,12 @@ export function pdfErzeugen(
     doc.setDrawColor(...LINIE);
     doc.setLineWidth(0.3);
     const paare: Array<[string, string]> = [
-      // Im PDF ausgeschrieben — anders als im CSV, wo die Spalte leer bleibt.
+      // Im PDF ausgeschrieben — anders als in der Excel-Tabelle, wo die Spalte leer bleibt.
       // Das Blatt liest ein Mensch.
       ['Kunde', kunde?.name ?? 'ohne Kunden'],
-      // Wie im CSV: fuers Buero heisst es "Baustelle", in der App "Projekt".
-      ['Baustelle', baustelle.ort],
+      // Wie in der Excel-Datei: fuers Buero heisst es "Baustelle", in der App "Projekt".
+      // Ein reines Kundenprojekt hat keinen Ort.
+      ['Baustelle', baustelle.ort || '—'],
       ['Bereich', schein.bezeichnung || '—'],
       ['Datum', `${datum(stand)}, ${zeit(stand)}`],
     ];
@@ -174,18 +181,11 @@ export function pdfErzeugen(
   return doc;
 }
 
-export function pdfDateiname(schein: Schein, baustelle: Baustelle): string {
-  const stand = schein.beendet ?? Date.now();
-  const teile = [
-    'MaterialBlitz', datumSortierbar(stand), zeitKompakt(stand), dateinameTeil(baustelle.ort),
-  ];
-  if (schein.bezeichnung) teile.push(dateinameTeil(schein.bezeichnung));
-  return teile.join('_') + '.pdf';
-}
-
 export function pdfDatei(
   schein: Schein, baustelle: Baustelle, firma: Firma, kunde?: Kunde, ersteller?: Ersteller,
+  logo?: Logo | null,
 ): File {
-  const blob = pdfErzeugen(schein, baustelle, firma, kunde, ersteller).output('blob');
-  return new File([blob], pdfDateiname(schein, baustelle), { type: 'application/pdf' });
+  const blob = pdfErzeugen(schein, baustelle, firma, kunde, ersteller, logo).output('blob');
+  const name = scheinDateiname(projektTitel(baustelle, kunde?.name), schein.bezeichnung, schein.beendet ?? Date.now(), 'pdf');
+  return new File([blob], name, { type: 'application/pdf' });
 }

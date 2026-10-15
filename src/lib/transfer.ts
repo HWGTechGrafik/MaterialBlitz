@@ -1,5 +1,8 @@
 import { db, einstellungenLesen, einstellungenSchreiben } from '../db';
-import type { Artikel, Baustelle, Einstellungen, Kunde, Position, Schein, VerlaufEintrag } from '../model';
+import {
+  projektTitel,
+  type Artikel, type Baustelle, type Einstellungen, type Kunde, type Position, type Schein, type VerlaufEintrag,
+} from '../model';
 import { dateinameTeil, datumSortierbar, zeit, zeitKompakt } from './format';
 import { vermerken } from './verlauf';
 
@@ -91,7 +94,7 @@ export async function scheinPacken(
   const name = [
     'MaterialBlitz', 'Uebergabe',
     datumSortierbar(umschlag.erzeugt), zeitKompakt(umschlag.erzeugt),
-    dateinameTeil(baustelle.ort),
+    dateinameTeil(projektTitel(baustelle, kunde?.name)),
   ].join('_') + '.txt';
   return zuDatei(umschlag, name);
 }
@@ -195,7 +198,7 @@ export function vorschau(text: string): Vorschau {
   if (u.typ === 'schein' && u.schein) {
     return {
       art: 'schein', umschlag: u,
-      ort: u.schein.baustelle.ort,
+      ort: projektTitel(u.schein.baustelle, u.schein.baustelle.kunde),
       positionen: u.schein.positionen.length,
       absender: u.absender || 'unbekannt',
       zeitpunkt,
@@ -241,7 +244,7 @@ export async function scheinUebernehmen(u: Umschlag): Promise<void> {
     kundeId = vorhanden?.id ?? (await db.kunden.add({ name: daten.baustelle.kunde }));
   }
 
-  let baustelle = await db.baustellen.where('ort').equals(daten.baustelle.ort).first();
+  let baustelle = await projektFinden(daten.baustelle.ort, kundeId);
   if (baustelle) {
     await db.baustellen.update(baustelle.id!, { zuletzt: Date.now(), abgeschlossen: false });
   } else {
@@ -317,18 +320,25 @@ export async function sicherungEinspielen(
       if (da) await db.artikel.update(da.id!, { anzahl: Math.max(da.anzahl, a.anzahl), codes, ordner });
       else await db.artikel.add({ name: a.name, einheit: a.einheit, anzahl: a.anzahl, codes, ...(ordner ? { ordner } : {}) });
     }
+    // Kunden ueber den Namen zusammenfuehren und merken, welche alte Nummer
+    // zu welcher neuen gehoert — die Projekte haengen daran.
+    const kundenNummern = new Map<number, number>();
     for (const k of s.kunden) {
-      if (!(await db.kunden.where('name').equals(k.name).first())) {
-        await db.kunden.add({ name: k.name, versteckt: k.versteckt });
-      }
+      const da = await db.kunden.where('name').equals(k.name).first();
+      const id = da?.id ?? (await db.kunden.add({ name: k.name, versteckt: k.versteckt }));
+      if (k.id !== undefined) kundenNummern.set(k.id, id as number);
     }
     // Baustellen anlegen und dabei merken, welche alte Nummer zu welcher
     // neuen gehoert — die Scheine haengen daran.
     const nummern = new Map<number, number>();
     for (const b of s.baustellen) {
-      const da = await db.baustellen.where('ort').equals(b.ort).first();
+      const kundeId = b.kundeId !== undefined ? kundenNummern.get(b.kundeId) : undefined;
+      const da = await projektFinden(b.ort, kundeId);
+      // Mit Kunde: ein neues Projekt kam bisher ohne ihn an — und ein
+      // reines Kundenprojekt haette dann gar keinen Namen mehr.
       const id = da?.id ?? (await db.baustellen.add({
         ort: b.ort, zuletzt: b.zuletzt, abgeschlossen: b.abgeschlossen,
+        ...(kundeId !== undefined ? { kundeId } : {}),
       }));
       if (b.id !== undefined) nummern.set(b.id, id as number);
     }
@@ -360,6 +370,17 @@ export async function sicherungEinspielen(
     }
   });
   await einstellungenSchreiben({ letzteSicherung: Date.now(), neueArtikel: 0 });
+}
+
+/**
+ * Dasselbe Projekt auf diesem Geraet. Mit Ort zaehlt der Ort, wie bisher;
+ * ein reines Kundenprojekt hat keinen und wird am Kunden erkannt — sonst
+ * fielen alle Kundenprojekte in eines zusammen.
+ */
+async function projektFinden(ort: string, kundeId?: number): Promise<Baustelle | undefined> {
+  if (ort) return db.baustellen.where('ort').equals(ort).first();
+  if (kundeId === undefined) return undefined;
+  return db.baustellen.where('ort').equals('').filter((b) => b.kundeId === kundeId).first();
 }
 
 /** Woran ein Verlaufseintrag beim Zusammenfuehren wiedererkannt wird. */
