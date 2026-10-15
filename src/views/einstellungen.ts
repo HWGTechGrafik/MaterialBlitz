@@ -256,7 +256,7 @@ function excelKarte(): HTMLElement {
 
   return h('div', { class: 'karte' },
     h('h2', { text: 'Archiv als Excel' }),
-    h('p', { text: 'Viele Artikel auf einmal: die Vorlage in Excel befüllen – Bezeichnung, Einheit und auf Wunsch die Nummer unter dem Strichcode – und hier einlesen. Gelöscht wird dabei nichts.' }),
+    h('p', { text: 'Viele Artikel auf einmal: die Vorlage in Excel befüllen – Bezeichnung, Einheit und auf Wunsch Ordner und die Nummer unter dem Strichcode – und hier einlesen. Gelöscht wird dabei nichts.' }),
     h('div', { class: 'knopf-stapel' },
       h('button', {
         class: 'knopf zweit', type: 'button', text: 'Vorlage herunterladen',
@@ -311,6 +311,10 @@ async function excelEinlesen(modul: Promise<typeof import('../lib/archivliste')>
       liste.neueEinheiten.length
         ? h('div', { class: 'paar' }, h('span', { class: 'k', text: 'Neue Einheiten' }),
             h('span', { class: 'v', text: liste.neueEinheiten.join(', ') }))
+        : null,
+      liste.neueOrdner.length
+        ? h('div', { class: 'paar' }, h('span', { class: 'k', text: 'Neue Ordner' }),
+            h('span', { class: 'v', text: liste.neueOrdner.join(', ') }))
         : null,
     ].filter((x) => x !== null));
   };

@@ -1,7 +1,8 @@
 import {
   artikelMitCode, artikelVerwenden, db, einstellungenLesen, kacheln, offenerSchein,
-  scheineDerBaustelle, speicherSichern, suchen,
+  scheineDerBaustelle, speicherSichern, suchen, verwendungHier,
 } from '../db';
+import { ordnerListe } from '../lib/ordner';
 import {
   istZaehlbar, positionHinzufuegen, runden,
   type Artikel, type Baustelle, type Kunde, type Position, type Schein,
@@ -14,17 +15,22 @@ import { csvDatei } from '../lib/csv';
 import { inZwischenablage, teilen } from '../lib/share';
 import { AM_PC, NICHT_MOEGLICH } from '../lib/geraet';
 import { scheinPacken } from '../lib/transfer';
+import { scheinName, vermerken } from '../lib/verlauf';
+import { verlaufZeigen } from './verlauf';
 
 /** Welcher offene Schein gerade bearbeitet wird (eigener oder uebernommener). */
 let gewaehlt: number | undefined;
 /** Offene Eingabe: Artikel gewaehlt, Menge fehlt noch. */
 let block: { name: string; einheit: string; bearbeitet?: number } | null = null;
 let sucheOffen = false;
+/** Ordner, der in der Suche gerade aufgeklappt ist. */
+let ordnerAuf: string | null = null;
 
 export function scheinZuruecksetzen(): void {
   gewaehlt = undefined;
   block = null;
   sucheOffen = false;
+  ordnerAuf = null;
 }
 
 export async function scheinView(): Promise<HTMLElement[]> {
@@ -210,6 +216,21 @@ async function rumpfBauen(
     );
   }
 
+  const eintraege = await db.verlauf.where('baustelleId').equals(baustelle.id!).count();
+  rechts.append(
+    h('button', {
+      class: 'reihe', type: 'button',
+      onclick: () => void verlaufZeigen(baustelle),
+      style: erledigt.length ? '' : 'border-top:1px solid var(--line)',
+    },
+      h('div', {},
+        h('div', { class: 'haupt', text: 'Verlauf' }),
+        h('div', { class: 'neben', text: eintraege ? `${eintraege} Einträge mit Datum und Uhrzeit` : 'Wann wie viel von was – wird ab jetzt mitgeschrieben' }),
+      ),
+      h('span', { class: 'pfeil', html: '&rsaquo;' }),
+    ),
+  );
+
   rumpf.append(raster);
   return rumpf;
 }
@@ -329,13 +350,58 @@ async function suchfeld(baustelle: Baustelle): Promise<HTMLElement> {
   const treffer = h('div', { class: 'treffer' });
   const eingabe = h('input', { type: 'text', placeholder: 'Zwei Buchstaben genügen…', autocomplete: 'off' });
 
+  const waehlen = (a: Artikel) => { sucheOffen = false; block = { name: a.name, einheit: a.einheit }; neu(); };
+
+  /**
+   * Ohne Suchbegriff die Ordner des Archivs: wer nicht weiss, wie der
+   * Artikel genau heisst, findet ihn so unter „Kabel" oder „Loxone".
+   */
+  const ordnerZeigen = async () => {
+    const alle = await db.artikel.toArray();
+    if (eingabe.value.trim().length >= 2) return;
+    const ordner = ordnerListe(alle);
+    if (ordnerAuf !== null && ordner.includes(ordnerAuf)) {
+      const hier = await verwendungHier(baustelle.id!);
+      const drin = alle
+        .filter((a) => a.ordner === ordnerAuf)
+        .sort((a, b) => a.name.localeCompare(b.name, 'de'));
+      treffer.replaceChildren(
+        h('button', { type: 'button', onclick: () => { ordnerAuf = null; void ordnerZeigen(); } },
+          h('span', { class: 'nm neu', text: `‹ ${ordnerAuf}` }),
+          h('span', { class: 'eh', text: 'alle Ordner' }),
+        ),
+        ...drin.map((a) =>
+          h('button', { type: 'button', onclick: () => waehlen(a) },
+            h('span', { class: 'nm', text: a.name }),
+            hier.get(a.name) ? h('span', { class: 'plakette', text: 'hier' }) : null,
+            h('span', { class: 'eh', text: a.einheit }),
+          )),
+      );
+      treffer.scrollTop = 0;
+      return;
+    }
+    ordnerAuf = null;
+    treffer.replaceChildren(
+      ...ordner.map((o) =>
+        h('button', { type: 'button', onclick: () => { ordnerAuf = o; void ordnerZeigen(); } },
+          ikon('ordner'),
+          h('span', { class: 'nm', text: o }),
+          h('span', { class: 'eh', text: `${alle.filter((a) => a.ordner === o).length} Artikel` }),
+        )),
+    );
+  };
+
   const aktualisieren = async () => {
-    treffer.replaceChildren();
     const q = eingabe.value.trim();
+    if (q.length < 2) {
+      await ordnerZeigen();
+      return;
+    }
+    treffer.replaceChildren();
     const gefunden = await suchen(q, baustelle.id);
     for (const a of gefunden) {
       treffer.append(
-        h('button', { type: 'button', onclick: () => { sucheOffen = false; block = { name: a.name, einheit: a.einheit }; neu(); } },
+        h('button', { type: 'button', onclick: () => waehlen(a) },
           h('span', { class: 'nm', text: a.name }),
           a.perCode ? h('span', { class: 'plakette', text: 'Code' }) : null,
           a.hier ? h('span', { class: 'plakette', text: 'hier' }) : null,
@@ -355,6 +421,7 @@ async function suchfeld(baustelle: Baustelle): Promise<HTMLElement> {
     }
   };
   eingabe.addEventListener('input', aktualisieren);
+  await ordnerZeigen();
 
   const kasten = h('div', {},
     treffer,
@@ -498,6 +565,11 @@ async function mengeUebernehmen(name: string, n: number, einheit: string): Promi
   if (!schein) return;
   const { positionen, index } = positionHinzufuegen(schein.positionen, name, n, einheit);
   await db.scheine.update(schein.id!, { positionen });
+  await vermerken({
+    baustelleId: schein.baustelleId,
+    art: index < schein.positionen.length ? 'dazu' : 'neu',
+    name, einheit, menge: n, stand: positionen[index]!.menge, schein: scheinName(schein),
+  });
   await db.baustellen.update(schein.baustelleId, { zuletzt: Date.now() });
   await artikelVerwenden(name, einheit);
   await speicherSichern();
@@ -510,8 +582,15 @@ async function positionAendern(index: number, n: number): Promise<void> {
   const schein = await db.scheine.get(gewaehlt!);
   if (!schein) return;
   const positionen = schein.positionen.slice();
-  positionen[index] = { ...positionen[index]!, menge: n };
+  const alt = positionen[index]!;
+  positionen[index] = { ...alt, menge: n };
   await db.scheine.update(schein.id!, { positionen });
+  if (alt.menge !== n) {
+    await vermerken({
+      baustelleId: schein.baustelleId, art: 'geaendert',
+      name: alt.name, einheit: alt.einheit, menge: runden(n - alt.menge), stand: n, schein: scheinName(schein),
+    });
+  }
   block = null;
   zustand.frisch = index;
   neu();
@@ -520,8 +599,15 @@ async function positionAendern(index: number, n: number): Promise<void> {
 async function positionLoeschen(index: number): Promise<void> {
   const schein = await db.scheine.get(gewaehlt!);
   if (!schein) return;
+  const weg = schein.positionen[index];
   const positionen = schein.positionen.filter((_, i) => i !== index);
   await db.scheine.update(schein.id!, { positionen });
+  if (weg) {
+    await vermerken({
+      baustelleId: schein.baustelleId, art: 'geloescht',
+      name: weg.name, einheit: weg.einheit, menge: -weg.menge, stand: 0, schein: scheinName(schein),
+    });
+  }
   block = null;
   zustand.frisch = undefined;
   neu();
@@ -559,6 +645,9 @@ async function senden(baustelle: Baustelle, kunde: Kunde | undefined, schein: Sc
   // "Geteilt", nicht "gesendet": ob die Mail wirklich abging, erfaehrt die App
   // nicht. Sie behauptet nur, was sie weiss.
   await db.scheine.update(schein.id!, { zustand: 'geteilt', beendet: stand.beendet });
+  await vermerken({
+    baustelleId: baustelle.id!, art: 'geteilt', positionen: schein.positionen.length, schein: scheinName(schein),
+  });
   scheinZuruecksetzen();
   neu();
   // Am PC gibt es keinen Teilen-Dialog, der die Mail gleich oeffnet - also
@@ -617,6 +706,9 @@ async function uebergeben(baustelle: Baustelle, kunde: Kunde | undefined, schein
   if (ergebnis !== 'geteilt') return;
 
   await db.scheine.update(schein.id!, { zustand: 'uebergeben', beendet: Date.now() });
+  await vermerken({
+    baustelleId: baustelle.id!, art: 'uebergeben', positionen: schein.positionen.length, schein: scheinName(schein),
+  });
   scheinZuruecksetzen();
   neu();
   if (AM_PC) {
@@ -667,6 +759,10 @@ function nachtragAnbieten(baustelle: Baustelle, alt: Schein): void {
             erstellt: Date.now(),
             nachtragVon: alt.id,
             positionen,
+          });
+          await vermerken({
+            baustelleId: baustelle.id!, art: 'nachtrag', positionen: positionen.length,
+            schein: alt.bezeichnung ?? `vom ${datum(alt.beendet ?? alt.erstellt)}`,
           });
           gewaehlt = id;
           neu();

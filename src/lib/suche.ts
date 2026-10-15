@@ -281,11 +281,12 @@ export async function durchsuchen(begriff: string): Promise<Gruppe[]> {
         [
           { feld: 'Artikel', zeig: a.name },
           { feld: 'Einheit', zeig: a.einheit },
+          a.ordner ? { feld: 'Ordner', zeig: a.ordner } : null,
         ],
         begriffe,
       );
       if (!treffer) return null;
-      const unter = `${a.einheit} · ${a.anzahl}× verwendet`;
+      const unter = `${a.ordner ? `${a.ordner} · ` : ''}${a.einheit} · ${a.anzahl}× verwendet`;
       return {
         art: 'artikel',
         titel: a.name,

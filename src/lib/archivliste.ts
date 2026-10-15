@@ -1,8 +1,9 @@
 import { db, einstellungenLesen, einstellungenSchreiben } from '../db';
 import type { Artikel } from '../model';
 import { codePruefen, eigenerCode } from './codes';
+import { ordnerAngleichen, ordnerListe } from './ordner';
 import { datumSortierbar } from './format';
-import { csvLesen, istZip, xlsxErzeugen, xlsxLesen, type Tabelle } from './xlsx';
+import { csvLesen, istZip, xlsxDatei, xlsxLesen, type Tabelle } from './xlsx';
 
 /**
  * Das Archiv als Excel-Liste: Vorlage zum Befuellen, Ausgabe des Bestands
@@ -13,7 +14,7 @@ import { csvLesen, istZip, xlsxErzeugen, xlsxLesen, type Tabelle } from './xlsx'
  * Pflegewerkzeug fuers Archiv, nichts, was zum Kunden geht.
  *
  * Einlesen kommt nur **dazu**, wie beim weitergegebenen Archiv: geloescht
- * wird nichts, Codes kommen zu den vorhandenen, die Einheit der Liste gilt.
+ * wird nichts, Codes kommen zu den vorhandenen, Einheit und Ordner der Liste gelten.
  */
 
 const BLATT = 'Artikel';
@@ -21,6 +22,7 @@ const BLATT = 'Artikel';
 const SPALTEN: Tabelle['spalten'] = [
   { titel: 'Bezeichnung', breite: 46 },
   { titel: 'Einheit', breite: 10 },
+  { titel: 'Ordner', breite: 20 },
   { titel: 'Codes', breite: 34, text: true },
 ];
 
@@ -31,6 +33,7 @@ const ANLEITUNG = [
   'Im Blatt „Artikel“ steht je Zeile ein Artikel. Die erste Zeile mit den Spaltenköpfen bitte stehen lassen.',
   'Bezeichnung (Pflicht): so, wie sie auf dem Schein stehen soll, etwa „NYM-J 3x1,5“. Gibt es den Artikel im Archiv schon unter genau diesem Namen, wird er ergänzt statt doppelt angelegt.',
   'Einheit: aus der Auswahl wählen. Eine Einheit, die die App noch nicht kennt, wird beim Einlesen dazugenommen. Leer heißt bei neuen Artikeln „Stk“, bei vorhandenen bleibt die bisherige.',
+  'Ordner (freiwillig): etwa „Kabel“, „Schaltermaterial“ oder „Loxone“. Im Archiv liegen die Artikel dann in diesen Ordnern, beim Aufschreiben findet man sie auch darüber. Ein neuer Name wird ein neuer Ordner; leer heißt bei vorhandenen Artikeln: der Ordner bleibt, wie er ist.',
   'Codes (freiwillig): die Nummer unter dem Strichcode (EAN) oder ein eigener Code „MB-…“. Mehrere Codes mit Komma trennen. Die Spalte ist als Text formatiert – bitte so lassen, sonst macht Excel aus einer EAN „4,00638E+12“ und streicht führende Nullen.',
   '',
   'Einlesen',
@@ -53,18 +56,11 @@ function anleitung(): Tabelle {
   };
 }
 
-function datei(bytes: Uint8Array, name: string): File {
-  // fflate legt immer einen gewoehnlichen ArrayBuffer an, nie einen geteilten.
-  return new File([bytes as Uint8Array<ArrayBuffer>], name, {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  });
-}
-
 /** Leere Vorlage mit Auswahlliste der Einheiten und Anleitung. */
 export async function vorlageErzeugen(): Promise<File> {
   const { einheiten } = await einstellungenLesen();
   const artikel: Tabelle = { name: BLATT, spalten: SPALTEN, zeilen: [], kopf: true, auswahl: { spalte: 1, werte: einheiten } };
-  return datei(xlsxErzeugen([artikel, anleitung()]), 'MaterialBlitz_Archiv_Vorlage.xlsx');
+  return xlsxDatei([artikel, anleitung()], 'MaterialBlitz_Archiv_Vorlage.xlsx');
 }
 
 /**
@@ -78,11 +74,11 @@ export async function archivAlsExcel(): Promise<File> {
   const artikel: Tabelle = {
     name: BLATT,
     spalten: [...SPALTEN, { titel: 'Verwendet', breite: 11 }],
-    zeilen: alle.map((a) => [a.name, a.einheit, (a.codes ?? []).join(', '), String(a.anzahl)]),
+    zeilen: alle.map((a) => [a.name, a.einheit, a.ordner ?? '', (a.codes ?? []).join(', '), String(a.anzahl)]),
     kopf: true,
     auswahl: { spalte: 1, werte: einheiten },
   };
-  return datei(xlsxErzeugen([artikel, anleitung()]), `MaterialBlitz_Archiv_${datumSortierbar(Date.now())}.xlsx`);
+  return xlsxDatei([artikel, anleitung()], `MaterialBlitz_Archiv_${datumSortierbar(Date.now())}.xlsx`);
 }
 
 // ---------------------------------------------------------------- Lesen
@@ -91,6 +87,8 @@ export interface Eintrag {
   name: string;
   /** Fehlt, wenn die Zelle leer war — dann bleibt die bisherige Einheit. */
   einheit?: string;
+  /** Ebenso: leer laesst den bisherigen Ordner. */
+  ordner?: string;
   codes: string[];
 }
 
@@ -100,14 +98,17 @@ export interface Liste {
   hinweise: string[];
   /** Einheiten aus der Liste, die die App noch nicht kennt. */
   neueEinheiten: string[];
+  /** Ordner aus der Liste, die es im Archiv noch nicht gibt. */
+  neueOrdner: string[];
 }
 
 /** Kopfzeile erkennen — auch in Listen anderer Herkunft. */
-function spaltenArt(titel: string): 'name' | 'einheit' | 'codes' | null {
+function spaltenArt(titel: string): 'name' | 'einheit' | 'ordner' | 'codes' | null {
   const t = titel.toLowerCase().replace(/[^a-zäöüß]/g, '');
   if (['bezeichnung', 'artikel', 'artikelbezeichnung', 'artikelname', 'name', 'material',
     'materialbezeichnung', 'beschreibung', 'kurztext', 'text'].includes(t)) return 'name';
   if (['einheit', 'me', 'mengeneinheit', 'eh', 'unit', 'masseinheit', 'maßeinheit'].includes(t)) return 'einheit';
+  if (['ordner', 'gruppe', 'kategorie', 'artikelgruppe', 'materialgruppe', 'bereich'].includes(t)) return 'ordner';
   if (['codes', 'code', 'ean', 'eancode', 'eannummer', 'gtin', 'eangtin', 'strichcode', 'barcode',
     'qr', 'qrcode', 'codesean'].includes(t)) return 'codes';
   return null;
@@ -135,9 +136,9 @@ export async function listeLesen(d: File): Promise<Liste | { fehler: string }> {
   // Die Kopfzeile muss nicht ganz oben stehen: Listen vom Grosshaendler
   // haben oft erst ein paar Zeilen Briefkopf.
   let kopf = -1;
-  let sp: Record<'name' | 'einheit' | 'codes', number> = { name: -1, einheit: -1, codes: -1 };
+  let sp: Record<'name' | 'einheit' | 'ordner' | 'codes', number> = { name: -1, einheit: -1, ordner: -1, codes: -1 };
   for (let r = 0; r < Math.min(zeilen.length, 15) && kopf < 0; r++) {
-    const s = { name: -1, einheit: -1, codes: -1 };
+    const s = { name: -1, einheit: -1, ordner: -1, codes: -1 };
     (zeilen[r] ?? []).forEach((t, i) => {
       const art = spaltenArt(t);
       if (art && s[art] < 0) s[art] = i;
@@ -148,9 +149,11 @@ export async function listeLesen(d: File): Promise<Liste | { fehler: string }> {
     return { fehler: 'Keine Spalte „Bezeichnung“ gefunden. Am einfachsten die Vorlage verwenden – die erste Zeile trägt dort die Spaltenköpfe.' };
   }
 
-  const { einheiten } = await einstellungenLesen();
+  const [{ einheiten }, bestand] = await Promise.all([einstellungenLesen(), db.artikel.toArray()]);
   const bekannt = new Map(einheiten.map((u) => [u.toLowerCase(), u]));
   const neueEinheiten: string[] = [];
+  const ordnerBekannt = ordnerListe(bestand);
+  const neueOrdner: string[] = [];
   const hinweise: string[] = [];
   const nachName = new Map<string, Eintrag>();
   const zeileVonName = new Map<string, number>();
@@ -163,8 +166,9 @@ export async function listeLesen(d: File): Promise<Liste | { fehler: string }> {
     const name = zelle(sp.name).replace(/\s+/g, ' ');
     const einheitRoh = zelle(sp.einheit);
     const codesRoh = zelle(sp.codes);
+    const ordnerRoh = zelle(sp.ordner);
     if (!name) {
-      if (einheitRoh || codesRoh) hinweise.push(`Zeile ${nr}: keine Bezeichnung – übergangen.`);
+      if (einheitRoh || codesRoh || ordnerRoh) hinweise.push(`Zeile ${nr}: keine Bezeichnung – übergangen.`);
       continue;
     }
 
@@ -176,6 +180,13 @@ export async function listeLesen(d: File): Promise<Liste | { fehler: string }> {
         bekannt.set(einheitRoh.toLowerCase(), einheitRoh);
         neueEinheiten.push(einheitRoh);
       }
+    }
+
+    // Schreibweise angleichen: aus "kabel" in Zeile 40 wird kein zweiter Ordner.
+    const ordner = ordnerAngleichen(ordnerRoh, ordnerBekannt);
+    if (ordner && !ordnerBekannt.includes(ordner)) {
+      ordnerBekannt.push(ordner);
+      neueOrdner.push(ordner);
     }
 
     const codes: string[] = [];
@@ -195,14 +206,15 @@ export async function listeLesen(d: File): Promise<Liste | { fehler: string }> {
     if (da) {
       hinweise.push(`Zeile ${nr}: „${name}“ stand schon in Zeile ${zeileVonName.get(name)} – zusammengefasst.`);
       if (einheit) da.einheit = einheit;
+      if (ordner) da.ordner = ordner;
       for (const c of codes) if (!da.codes.includes(c)) da.codes.push(c);
       continue;
     }
-    nachName.set(name, { name, einheit, codes });
+    nachName.set(name, { name, einheit, ordner, codes });
     zeileVonName.set(name, nr);
   }
 
-  return { eintraege: [...nachName.values()], hinweise, neueEinheiten };
+  return { eintraege: [...nachName.values()], hinweise, neueEinheiten, neueOrdner };
 }
 
 // ------------------------------------------------------------ Einspielen
@@ -237,12 +249,13 @@ function anwenden(liste: Liste, bestand: Artikel[], eigeneCodes: boolean) {
     let a = nachName.get(e.name);
     const warNeu = !a;
     if (!a) {
-      a = { name: e.name, einheit: e.einheit ?? 'Stk', anzahl: 0, codes: [] };
+      a = { name: e.name, einheit: e.einheit ?? 'Stk', anzahl: 0, codes: [], ...(e.ordner ? { ordner: e.ordner } : {}) };
       nachName.set(e.name, a);
       neue.push(a);
     }
     let anders = false;
     if (!warNeu && e.einheit && e.einheit !== a.einheit) { a.einheit = e.einheit; anders = true; }
+    if (!warNeu && e.ordner && e.ordner !== a.ordner) { a.ordner = e.ordner; anders = true; }
 
     for (const c of e.codes) {
       const traeger = nachCode.get(c);

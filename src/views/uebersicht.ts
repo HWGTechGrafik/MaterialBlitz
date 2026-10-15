@@ -384,7 +384,7 @@ async function einlesen(): Promise<void> {
         ),
         h('p', { class: 'hinweis', style: 'padding:0',
           text: v.massgeblich
-            ? 'Fehlende Artikel kommen dazu. Gleichnamige übernehmen Einheit und Codes aus der Datei. Was nur hier steht, bleibt – nichts wird gelöscht.'
+            ? 'Fehlende Artikel kommen dazu. Gleichnamige übernehmen Einheit, Ordner und Codes aus der Datei. Was nur hier steht, bleibt – nichts wird gelöscht.'
             : 'Fehlende Artikel kommen ins Archiv dazu. Was schon da ist, bleibt, wie es ist – nichts wird gelöscht.' }),
       ],
       [

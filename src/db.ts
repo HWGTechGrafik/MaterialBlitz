@@ -8,6 +8,7 @@ import {
   type Einstellungen,
   type Kunde,
   type Schein,
+  type VerlaufEintrag,
 } from './model';
 
 class MaterialBlitzDB extends Dexie {
@@ -16,6 +17,7 @@ class MaterialBlitzDB extends Dexie {
   baustellen!: EntityTable<Baustelle, 'id'>;
   scheine!: EntityTable<Schein, 'id'>;
   einstellungen!: EntityTable<Einstellungen, 'id'>;
+  verlauf!: EntityTable<VerlaufEintrag, 'id'>;
 
   constructor() {
     super('materialblitz');
@@ -34,6 +36,11 @@ class MaterialBlitzDB extends Dexie {
     // Sicherung an einem einzigen doppelten Code scheitern.
     this.version(2).stores({
       artikel: '++id, &name, anzahl, *codes',
+    });
+    // Verlauf je Projekt. Eine eigene Tabelle statt einer Liste an der
+    // Baustelle: sonst schriebe jede Position die ganze Geschichte neu.
+    this.version(3).stores({
+      verlauf: '++id, baustelleId',
     });
   }
 }

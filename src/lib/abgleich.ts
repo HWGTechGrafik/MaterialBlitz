@@ -146,7 +146,7 @@ export function geaendert(): void {
 const NUR_HIER = new Set(['letzteSicherung', 'neueArtikel']);
 
 function hakenSetzen(): void {
-  for (const t of [db.artikel, db.kunden, db.baustellen, db.scheine]) {
+  for (const t of [db.artikel, db.kunden, db.baustellen, db.scheine, db.verlauf]) {
     t.hook('creating', () => { geaendert(); });
     t.hook('updating', () => { geaendert(); });
     t.hook('deleting', () => { geaendert(); });

@@ -1,6 +1,7 @@
 import { db, einstellungenLesen, einstellungenSchreiben } from '../db';
-import type { Artikel, Baustelle, Einstellungen, Kunde, Position, Schein } from '../model';
+import type { Artikel, Baustelle, Einstellungen, Kunde, Position, Schein, VerlaufEintrag } from '../model';
 import { dateinameTeil, datumSortierbar, zeit, zeitKompakt } from './format';
+import { vermerken } from './verlauf';
 
 /**
  * Ein Format fuer drei Anlaesse: Uebergabe eines Scheins an einen Kollegen,
@@ -34,12 +35,14 @@ export interface Umschlag {
     baustellen: Baustelle[];
     scheine: Schein[];
     einstellungen: Einstellungen;
+    /** Fehlt in Sicherungen aelterer Fassungen. */
+    verlauf?: VerlaufEintrag[];
   };
   katalog?: {
     /** Wofuer der Grundstock gedacht ist, etwa "Elektro". */
     titel: string;
     /** Codes nur im weitergegebenen Archiv; der Grundstock hat keine. */
-    artikel: Array<{ name: string; einheit: string; codes?: string[] }>;
+    artikel: Array<{ name: string; einheit: string; codes?: string[]; ordner?: string }>;
     /** Einheiten, die die Artikel brauchen und die feste Liste nicht hat. */
     einheiten: string[];
     /**
@@ -49,6 +52,12 @@ export interface Umschlag {
      * kennen das Feld nicht und ergaenzen ebenfalls nur - kein Schaden.
      */
     massgeblich?: true;
+    /**
+     * Die Datei traegt die Ordner. Erst dann heisst ein Artikel ohne Ordner
+     * wirklich "ohne Ordner" — in Dateien aelterer Fassungen fehlt das Feld
+     * einfach, und die eigene Einteilung bleibt.
+     */
+    mitOrdner?: true;
   };
 }
 
@@ -91,9 +100,9 @@ export async function scheinPacken(
 
 /** Der gesamte Bestand als Umschlag — fuer die Sicherungsdatei und die Dropbox. */
 export async function sicherungUmschlag(absender?: string, mitLizenz = false): Promise<Umschlag> {
-  const [artikel, kunden, baustellen, scheine, einstellungen] = await Promise.all([
+  const [artikel, kunden, baustellen, scheine, einstellungen, verlauf] = await Promise.all([
     db.artikel.toArray(), db.kunden.toArray(), db.baustellen.toArray(),
-    db.scheine.toArray(), einstellungenLesen(),
+    db.scheine.toArray(), einstellungenLesen(), db.verlauf.toArray(),
   ]);
   return {
     mblitz: 1,
@@ -110,6 +119,7 @@ export async function sicherungUmschlag(absender?: string, mitLizenz = false): P
     sicherung: {
       artikel, kunden, baustellen, scheine,
       einstellungen: { ...einstellungen, lizenz: undefined, lizenzGesetzt: undefined },
+      verlauf,
     },
   };
 }
@@ -139,10 +149,12 @@ export async function archivPacken(absender: string | undefined): Promise<File> 
     katalog: {
       titel: 'Archiv',
       massgeblich: true,
+      mitOrdner: true,
       artikel: artikel.map((a) => ({
         name: a.name,
         einheit: a.einheit,
         ...(a.codes?.length ? { codes: a.codes } : {}),
+        ...(a.ordner ? { ordner: a.ordner } : {}),
       })),
       einheiten: [...new Set(artikel.map((a) => a.einheit))],
     },
@@ -253,6 +265,10 @@ export async function scheinUebernehmen(u: Umschlag): Promise<void> {
     herkunft,
     positionen: daten.positionen,
   });
+  await vermerken({
+    baustelleId: baustelle!.id!, art: 'uebernommen',
+    positionen: daten.positionen.length, schein: daten.bezeichnung ?? herkunft,
+  });
 }
 
 /**
@@ -266,13 +282,19 @@ export async function sicherungEinspielen(
   modus: 'zusammenfuehren' | 'ersetzen',
 ): Promise<void> {
   const s = u.sicherung!;
-  await db.transaction('rw', [db.artikel, db.kunden, db.baustellen, db.scheine, db.einstellungen], async () => {
+  await db.transaction('rw', [db.artikel, db.kunden, db.baustellen, db.scheine, db.einstellungen, db.verlauf], async () => {
     if (modus === 'ersetzen') {
       await Promise.all([db.artikel.clear(), db.kunden.clear(), db.baustellen.clear(), db.scheine.clear()]);
       await db.artikel.bulkAdd(s.artikel);
       await db.kunden.bulkAdd(s.kunden);
       await db.baustellen.bulkAdd(s.baustellen);
       await db.scheine.bulkAdd(s.scheine);
+      // Eine Datei ohne Verlauf (aeltere Fassung) loescht den hiesigen nicht:
+      // die Baustellen behalten beim Ersetzen ihre Nummern, er passt weiter.
+      if (s.verlauf) {
+        await db.verlauf.clear();
+        await db.verlauf.bulkAdd(s.verlauf);
+      }
       const eigene = await einstellungenLesen();
       await db.einstellungen.put({
         ...s.einstellungen, id: 1, lizenz: eigene.lizenz, lizenzGesetzt: eigene.lizenzGesetzt,
@@ -290,8 +312,10 @@ export async function sicherungEinspielen(
         const traeger = await db.artikel.where('codes').equals(c).first();
         if (!traeger || traeger.id === da?.id) codes.push(c);
       }
-      if (da) await db.artikel.update(da.id!, { anzahl: Math.max(da.anzahl, a.anzahl), codes });
-      else await db.artikel.add({ name: a.name, einheit: a.einheit, anzahl: a.anzahl, codes });
+      // Der eigene Ordner geht vor; fehlt er, kommt der aus der Sicherung.
+      const ordner = da?.ordner ?? a.ordner;
+      if (da) await db.artikel.update(da.id!, { anzahl: Math.max(da.anzahl, a.anzahl), codes, ordner });
+      else await db.artikel.add({ name: a.name, einheit: a.einheit, anzahl: a.anzahl, codes, ...(ordner ? { ordner } : {}) });
     }
     for (const k of s.kunden) {
       if (!(await db.kunden.where('name').equals(k.name).first())) {
@@ -322,8 +346,25 @@ export async function sicherungEinspielen(
       const { id: _weg, ...rest } = sch;
       await db.scheine.add({ ...rest, baustelleId: zielId });
     }
+
+    // Verlauf ebenso — ohne Eintraege doppelt aufzunehmen, die schon da sind.
+    const schonDa = new Set((await db.verlauf.toArray()).map(verlaufSchluessel));
+    for (const v of s.verlauf ?? []) {
+      const zielId = nummern.get(v.baustelleId);
+      if (zielId === undefined) continue;
+      const { id: _weg, ...rest } = v;
+      const neuer = { ...rest, baustelleId: zielId };
+      if (schonDa.has(verlaufSchluessel(neuer))) continue;
+      schonDa.add(verlaufSchluessel(neuer));
+      await db.verlauf.add(neuer);
+    }
   });
   await einstellungenSchreiben({ letzteSicherung: Date.now(), neueArtikel: 0 });
+}
+
+/** Woran ein Verlaufseintrag beim Zusammenfuehren wiedererkannt wird. */
+function verlaufSchluessel(v: VerlaufEintrag): string {
+  return [v.baustelleId, v.zeit, v.art, v.name ?? '', v.menge ?? ''].join('|');
 }
 
 /**
@@ -333,7 +374,7 @@ export async function sicherungEinspielen(
  * Artikels nicht waehlbar und fiele still auf die erste zurueck.
  *
  * Ein weitergegebenes Archiv (`massgeblich`) gleicht ausserdem an:
- * gleichnamige Artikel uebernehmen Einheit und Codes der Datei. Geloescht
+ * gleichnamige Artikel uebernehmen Einheit, Codes und Ordner der Datei. Geloescht
  * wird auch dann nichts - was nur hier steht, bleibt. Codes kommen zu den
  * eigenen dazu; haengt einer hier an einem anderen Artikel, wandert er
  * herueber, denn ein Code gehoert hoechstens einem.
@@ -358,7 +399,7 @@ export async function katalogEinlesen(
       const da = await db.artikel.where('name').equals(a.name).first();
       if (!k.massgeblich) {
         if (da) continue;
-        await db.artikel.add({ name: a.name, einheit: a.einheit, anzahl: 0 });
+        await db.artikel.add({ name: a.name, einheit: a.einheit, anzahl: 0, ...(a.ordner ? { ordner: a.ordner } : {}) });
         neu++;
         continue;
       }
@@ -374,13 +415,15 @@ export async function katalogEinlesen(
         await db.artikel.add({
           name: a.name, einheit: a.einheit, anzahl: 0,
           ...(mitgebracht.length ? { codes: [...mitgebracht] } : {}),
+          ...(a.ordner ? { ordner: a.ordner } : {}),
         });
         neu++;
         continue;
       }
       const codes = [...new Set([...(da.codes ?? []), ...mitgebracht])];
-      if (da.einheit !== a.einheit || codes.length !== (da.codes?.length ?? 0)) {
-        await db.artikel.update(da.id!, { einheit: a.einheit, codes });
+      const ordner = k.mitOrdner ? a.ordner : da.ordner;
+      if (da.einheit !== a.einheit || codes.length !== (da.codes?.length ?? 0) || ordner !== da.ordner) {
+        await db.artikel.update(da.id!, { einheit: a.einheit, codes, ordner });
         angeglichen++;
       }
     }

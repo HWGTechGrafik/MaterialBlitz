@@ -18,6 +18,8 @@ export interface Spalte {
   breite: number;
   /** Als Text formatiert — auch fuer Zellen, die erst in Excel befuellt werden. */
   text?: boolean;
+  /** Als Zahl schreiben, damit Excel damit rechnen und summieren kann. */
+  zahl?: boolean;
 }
 
 export interface Tabelle {
@@ -77,6 +79,7 @@ function blattXml(t: Tabelle): string {
     `<row r="${r}">` + werte.map((w, i) => {
       const s = stil(i);
       const ref = `${spaltenName(i)}${r}`;
+      if (t.spalten[i]?.zahl && /^-?\d+(\.\d+)?$/.test(w)) return `<c r="${ref}"><v>${w}</v></c>`;
       // Inline-Text statt sharedStrings: eine Datei weniger, Excel liest beides.
       return w === ''
         ? (s ? `<c r="${ref}" s="${s}"/>` : '')
@@ -112,6 +115,14 @@ function blattXml(t: Tabelle): string {
     + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
     + ansicht + `<cols>${cols}</cols><sheetData>${zeilen}</sheetData>` + filter + pruefung
     + '</worksheet>';
+}
+
+/** Die fertige .xlsx als Datei zum Teilen bzw. Speichern. */
+export function xlsxDatei(tabellen: Tabelle[], name: string): File {
+  // fflate legt immer einen gewoehnlichen ArrayBuffer an, nie einen geteilten.
+  return new File([xlsxErzeugen(tabellen) as Uint8Array<ArrayBuffer>], name, {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
 }
 
 /** Mehrere Tabellen als eine .xlsx. Die erste ist beim Oeffnen aktiv. */

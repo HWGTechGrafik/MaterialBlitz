@@ -251,6 +251,7 @@ const IKONEN = {
   strichcode:
     '<path d="M4 6v12"/><path d="M7.5 6v12"/><path d="M10.5 6v12"/><path d="M14.5 6v12"/>' +
     '<path d="M17 6v12"/><path d="M20 6v12"/>',
+  ordner: '<path d="M3 7.5A2 2 0 0 1 5 5.5h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
   regler:
     '<path d="M4 8h9"/><circle cx="16" cy="8" r="2.3"/><path d="M18.3 8H20"/>' +
     '<path d="M4 16h2.5"/><circle cx="9" cy="16" r="2.3"/><path d="M11.3 16H20"/>',

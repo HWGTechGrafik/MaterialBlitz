@@ -254,6 +254,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .treffer .nm { flex: 1; }
 .treffer .eh { font-size: 14px; color: var(--ink-muted); }
 .treffer .neu { color: var(--ader); font-weight: 600; }
+.treffer .ikon { flex: none; color: var(--ader); }
 .plakette {
   font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
   background: var(--blitz-soft); color: var(--blitz);
@@ -471,6 +472,7 @@ mark {
   border: 1px solid var(--line); border-radius: var(--r);
   background: var(--ground); color: var(--ink); font: inherit; font-size: 15px;
 }
+.etikett-schnell select + select { margin-left: 0; }
 .etiketten-liste { max-height: 40vh; overflow-y: auto; border-top: 1px solid var(--line); }
 .etikett-zeile { display: flex; align-items: center; gap: 12px; min-height: 50px; border-bottom: 1px solid var(--line); }
 .etikett-zeile input { width: 22px; height: 22px; flex: none; accent-color: var(--ader); }
@@ -480,6 +482,38 @@ mark {
   border: 1px solid var(--line); border-radius: var(--r);
   background: var(--ground); color: var(--ink); font: inherit; font-size: 15px;
 }
+.etikett-zeile .wo { flex: none; font-size: 13px; color: var(--ink-muted); }
+
+/* ------------------------------------------------------------- Verlauf */
+
+.verlauf-filter { display: flex; gap: 8px; align-items: center; }
+.verlauf-filter .feld { flex: 1; min-width: 0; }
+.verlauf-filter select {
+  flex: none; max-width: 45%; min-height: 46px; padding: 0 8px;
+  border: 1px solid var(--line); border-radius: var(--r);
+  background: var(--ground); color: var(--ink); font: inherit; font-size: 15px;
+}
+/* Eigene Bildlaufleiste: die Knoepfe darunter bleiben stehen. */
+.verlauf { margin: 0 -16px; max-height: 56vh; overflow-y: auto; border-top: 1px solid var(--line); }
+.verlauf .abschnitt { padding-top: 12px; }
+.verlauf-zeile {
+  display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: baseline;
+  padding: 9px 16px; border-bottom: 1px solid var(--line);
+}
+.vz-zeit { font-size: 13px; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+.vz-was { min-width: 0; }
+.vz-name { font-weight: 500; overflow-wrap: anywhere; }
+.vz-name.ereignis { color: var(--ader); font-weight: 600; }
+.vz-neben { font-size: 12px; color: var(--ink-muted); margin-top: 2px; }
+.vz-menge { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.verlauf-zeile.weg .vz-menge { color: var(--warn); }
+
+/* --------------------------------------------------------------- Ordner */
+
+.reihe .ordner-kopf { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.reihe .ordner-kopf .ikon { width: 24px; height: 24px; flex: none; color: var(--ader); }
+.reihe.neuer-ordner { min-height: 52px; color: var(--ader); font-weight: 600; justify-content: flex-start; }
+.reihe.neuer-ordner .ikon { width: 22px; height: 22px; }
 
 /* -------------------------------------------------------------- Reiter */
 

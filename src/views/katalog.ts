@@ -4,35 +4,53 @@ import { codeArt, codePruefen, eigenerCode, istEigenerCode } from '../lib/codes'
 import { teilen } from '../lib/share';
 import { AM_PC, NICHT_MOEGLICH } from '../lib/geraet';
 import { neu } from '../store';
-import { blatt, h, kopfKnopf, kopfRechts, melden, umschalter, wischbar, type NeuArt } from '../ui';
+import { blatt, h, ikon, kopfKnopf, kopfRechts, melden, umschalter, wischbar, type NeuArt } from '../ui';
+import { ordnerAngleichen, ordnerListe } from '../lib/ordner';
 import { baustelleAnlegen } from './uebersicht';
+import { verlaufZeigen } from './verlauf';
 
 let reiter: 'katalog' | 'baustellen' = 'katalog';
+/** Der im Archiv geoeffnete Ordner; null zeigt die Ordner und alles ohne Ordner. */
+let offenerOrdner: string | null = null;
 
 export async function katalogView(): Promise<HTMLElement[]> {
   const imKatalog = reiter === 'katalog';
+  const imOrdner = imKatalog && offenerOrdner !== null;
 
   // Welches Register offen ist, steht als Überschrift da — die Sinnbilder
   // brauchen daneben keine Beschriftung mehr, nur einen sichtbar aktiven Zustand.
   const kopf = h(
     'div',
     { class: 'kopf' },
+    imOrdner
+      ? h('button', {
+          class: 'zurueck', type: 'button', 'aria-label': 'Zurück zum Archiv',
+          html: '&lsaquo;',
+          onclick: () => { offenerOrdner = null; neu(); },
+        })
+      : null,
     h('div', { class: 'kopf-text' },
-      h('div', { class: 'eyebrow', text: 'Register' }),
-      h('h1', { text: imKatalog ? 'Archiv' : 'Projekte' }),
+      h('div', { class: 'eyebrow', text: imOrdner ? 'Ordner' : 'Register' }),
+      h('h1', { text: imOrdner ? offenerOrdner! : imKatalog ? 'Archiv' : 'Projekte' }),
     ),
     kopfRechts(
       null,
       kopfKnopf({
         ikon: 'liste', titel: 'Register Archiv', art: imKatalog ? 'aktiv' : undefined,
-        tun: () => { reiter = 'katalog'; neu(); },
+        tun: () => { reiter = 'katalog'; offenerOrdner = null; neu(); },
       }),
       kopfKnopf({
         ikon: 'haus', titel: 'Register Projekte', art: imKatalog ? undefined : 'aktiv',
         tun: () => { reiter = 'baustellen'; neu(); },
       }),
       imKatalog
-        ? kopfKnopf({ ikon: 'strichcode', titel: 'Etiketten drucken', tun: () => void etikettenDrucken() })
+        ? kopfKnopf({
+            ikon: 'strichcode', titel: 'Etiketten drucken',
+            // Im Ordner sind dessen Artikel gleich angekreuzt.
+            tun: async () => void etikettenDrucken(imOrdner
+              ? (await db.artikel.toArray()).filter((a) => a.ordner === offenerOrdner).map((a) => a.id!)
+              : []),
+          })
         : null,
       kopfKnopf({ ikon: 'plus', titel: 'Neu anlegen', art: 'haupt', tun: () => neuAnlegen() }),
     ),
@@ -53,33 +71,84 @@ export async function katalogView(): Promise<HTMLElement[]> {
 function neuAnlegen(art: NeuArt = reiter === 'katalog' ? 'artikel' : 'projekt'): void {
   const register = art === 'artikel' ? 'katalog' : 'baustellen';
   if (reiter !== register) { reiter = register; neu(); }
-  if (art === 'artikel') void artikelBearbeiten(undefined, umschalter(art, neuAnlegen));
+  // Im offenen Ordner landet der neue Artikel gleich darin.
+  if (art === 'artikel') void artikelBearbeiten(undefined, umschalter(art, neuAnlegen), offenerOrdner ?? undefined);
   else baustelleAnlegen(false, umschalter(art, neuAnlegen));
 }
 
 // ---------------------------------------------------------------- Katalog
 
+function artikelReihe(a: Artikel): HTMLElement {
+  return h('button', { class: 'reihe', type: 'button', onclick: () => artikelBearbeiten(a.id) },
+    h('div', {},
+      h('div', { class: 'haupt', text: a.name }),
+      h('div', { class: 'neben',
+        text: `${a.einheit} · ${a.anzahl}× verwendet`
+          + (a.codes?.length ? ` · ${a.codes.length === 1 ? '1 Code' : `${a.codes.length} Codes`}` : '') }),
+    ),
+    h('span', { class: 'pfeil', html: '&rsaquo;' }),
+  );
+}
+
+/**
+ * Oben die Ordner, darunter was in keinem liegt. Ein Ordner zeigt beim
+ * Antippen nur seine Artikel. Ohne Ordner sieht das Archiv aus wie bisher —
+ * bis auf die Zeile „Neuer Ordner".
+ */
 async function katalogListe(rumpf: HTMLElement): Promise<void> {
   const artikel = (await db.artikel.toArray()).sort((a, b) => a.name.localeCompare(b.name, 'de'));
 
   if (!artikel.length) {
+    offenerOrdner = null;
     rumpf.append(h('div', { class: 'leer', text: 'Das Archiv wächst von selbst: was du in einem Projekt aufschreibst, steht danach hier. Viele Artikel auf einmal kommen über eine Excel-Liste herein – Einstellungen › Archiv als Excel.' }));
     return;
   }
 
-  for (const a of artikel) {
+  if (offenerOrdner !== null) {
+    const drin = artikel.filter((a) => a.ordner === offenerOrdner);
+    if (drin.length) {
+      for (const a of drin) rumpf.append(artikelReihe(a));
+      const name = offenerOrdner;
+      rumpf.append(
+        h('button', { class: 'reihe neuer-ordner', type: 'button', onclick: () => void ordnerBearbeiten(name) },
+          h('span', { class: 'ordner-kopf' }, ikon('ordner'), 'Ordner bearbeiten…')),
+        h('div', { class: 'hinweis', text: `${drin.length} Artikel in„${name}“. Das Plus legt einen neuen Artikel gleich in diesem Ordner an.` }),
+      );
+      return;
+    }
+    // Der Ordner ist leer geworden (letzter Artikel verschoben oder geloescht).
+    offenerOrdner = null;
+    // Die Ueberschrift steht schon - neu aufbauen, damit sie wieder "Archiv" heisst.
+    queueMicrotask(neu);
+    return;
+  }
+
+  const ordner = ordnerListe(artikel);
+  for (const o of ordner) {
+    const n = artikel.filter((a) => a.ordner === o).length;
     rumpf.append(
-      h('button', { class: 'reihe', type: 'button', onclick: () => artikelBearbeiten(a.id) },
-        h('div', {},
-          h('div', { class: 'haupt', text: a.name }),
-          h('div', { class: 'neben',
-            text: `${a.einheit} · ${a.anzahl}× verwendet`
-              + (a.codes?.length ? ` · ${a.codes.length === 1 ? '1 Code' : `${a.codes.length} Codes`}` : '') }),
+      h('button', { class: 'reihe', type: 'button', onclick: () => { offenerOrdner = o; neu(); } },
+        h('div', { class: 'ordner-kopf' },
+          ikon('ordner'),
+          h('div', {},
+            h('div', { class: 'haupt', text: o }),
+            h('div', { class: 'neben', text: `${n} Artikel` }),
+          ),
         ),
         h('span', { class: 'pfeil', html: '&rsaquo;' }),
       ),
     );
   }
+  rumpf.append(
+    h('button', { class: 'reihe neuer-ordner', type: 'button', onclick: () => void ordnerBearbeiten() },
+      h('span', { class: 'ordner-kopf' }, ikon('ordner'), 'Neuer Ordner…')),
+  );
+
+  const ohne = artikel.filter((a) => !a.ordner);
+  if (ordner.length && ohne.length) {
+    rumpf.append(h('div', { class: 'abschnitt' }, 'Ohne Ordner', h('span', { class: 'neben', text: `${ohne.length} Artikel` })));
+  }
+  for (const a of ohne) rumpf.append(artikelReihe(a));
 
   rumpf.append(
     h('div', { class: 'hinweis',
@@ -87,13 +156,131 @@ async function katalogListe(rumpf: HTMLElement): Promise<void> {
   );
 }
 
-export async function artikelBearbeiten(id?: number, oben?: HTMLElement): Promise<void> {
+/**
+ * Ordner anlegen oder bearbeiten: Name und welche Artikel darin liegen.
+ * Ein Ordner besteht, solange ein Artikel darin liegt — angelegt wird er
+ * deshalb gleich mit seinen Artikeln.
+ */
+async function ordnerBearbeiten(alt?: string): Promise<void> {
+  const artikel = (await db.artikel.toArray()).sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  const vorhandene = ordnerListe(artikel);
+  const name = h('input', { type: 'text', value: alt ?? '', placeholder: 'z.B. Kabel, Schaltermaterial, Loxone' });
+  const filter = h('input', { type: 'search', placeholder: 'Artikel suchen…', autocomplete: 'off' });
+
+  // Die eigenen zuerst, dann was noch in keinem Ordner liegt, dann der Rest.
+  const rang = (a: Artikel) => (alt !== undefined && a.ordner === alt ? 0 : !a.ordner ? 1 : 2);
+  const zeilen = artikel
+    .slice()
+    .sort((a, b) => rang(a) - rang(b))
+    .map((a) => {
+      const an = h('input', { type: 'checkbox', checked: alt !== undefined && a.ordner === alt });
+      const el = h('label', { class: 'etikett-zeile' }, an,
+        h('span', { class: 'nm', text: a.name }),
+        a.ordner && a.ordner !== alt ? h('span', { class: 'wo', text: a.ordner }) : null,
+      );
+      return { a, an, el };
+    });
+  filter.addEventListener('input', () => {
+    const q = filter.value.trim().toLowerCase();
+    for (const z of zeilen) z.el.hidden = Boolean(q) && !z.a.name.toLowerCase().includes(q);
+  });
+
+  const knoepfe: Array<{ text: string; art?: 'haupt' | 'zweit' | 'gefahr'; tun?: () => void }> = [
+    { text: 'Abbrechen', art: 'zweit' },
+  ];
+  if (alt !== undefined) {
+    knoepfe.push({ text: 'Auflösen', art: 'gefahr', tun: () => ordnerAufloesen(alt) });
+  }
+  knoepfe.push({
+    text: 'Speichern',
+    tun: async () => {
+      const neuName = ordnerAngleichen(name.value, vorhandene.filter((o) => o !== alt));
+      if (!neuName) {
+        melden('Name fehlt', 'Bitte dem Ordner einen Namen geben, etwa „Kabel“.');
+        return;
+      }
+      const gewaehlt = new Set(zeilen.filter((z) => z.an.checked).map((z) => z.a.id!));
+      if (!gewaehlt.size) {
+        melden('Kein Artikel gewählt', 'Ein Ordner besteht, solange ein Artikel darin liegt – bitte mindestens einen ankreuzen.');
+        return;
+      }
+      await db.transaction('rw', db.artikel, async () => {
+        for (const a of artikel) {
+          if (gewaehlt.has(a.id!)) {
+            if (a.ordner !== neuName) await db.artikel.update(a.id!, { ordner: neuName });
+          } else if (alt !== undefined && a.ordner === alt) {
+            await db.artikel.update(a.id!, { ordner: undefined });
+          }
+        }
+      });
+      offenerOrdner = neuName;
+      neu();
+    },
+  });
+
+  blatt(
+    alt === undefined ? 'Neuer Ordner' : 'Ordner bearbeiten',
+    [
+      h('label', { class: 'feld' }, h('span', { text: 'Name' }), name),
+      h('div', { class: 'feld', style: 'margin:0' },
+        h('span', { text: 'Artikel in diesem Ordner' }),
+        h('label', { class: 'feld', style: 'margin-bottom:6px' }, filter),
+      ),
+      h('div', { class: 'etiketten-liste' }, ...zeilen.map((z) => z.el)),
+      h('p', { class: 'hinweis', style: 'padding:0',
+        text: 'Ein Artikel liegt in höchstens einem Ordner – steht rechts schon einer, wird er verschoben.' }),
+    ],
+    knoepfe,
+  );
+  if (alt === undefined) setTimeout(() => name.focus(), 50);
+}
+
+function ordnerAufloesen(name: string): void {
+  blatt(
+    'Ordner auflösen?',
+    [h('p', { class: 'hinweis', style: 'padding:0',
+      text: `Der Ordner „${name}“ verschwindet. Seine Artikel bleiben im Archiv, nur ohne Ordner.` })],
+    [
+      { text: 'Abbrechen', art: 'zweit', tun: () => void ordnerBearbeiten(name) },
+      {
+        text: 'Auflösen', art: 'gefahr',
+        tun: async () => {
+          await db.artikel.where('id').anyOf(
+            (await db.artikel.toArray()).filter((a) => a.ordner === name).map((a) => a.id!),
+          ).modify((a) => { delete a.ordner; });
+          offenerOrdner = null;
+          neu();
+        },
+      },
+    ],
+  );
+}
+
+export async function artikelBearbeiten(id?: number, oben?: HTMLElement, ordnerVorgabe?: string): Promise<void> {
   const vorhanden = id ? await db.artikel.get(id) : undefined;
-  const e = await einstellungenLesen();
+  const [e, alle] = await Promise.all([einstellungenLesen(), db.artikel.toArray()]);
   const name = h('input', { type: 'text', value: vorhanden?.name ?? '', placeholder: 'z.B. NYM-J 3x1,5' });
   const einheit = h('select', {},
     ...e.einheiten.map((u) => h('option', { value: u, text: u, selected: u === vorhanden?.einheit })),
   );
+
+  // Auswahl statt Freitext: mit Handschuhen vertippt man sich leicht, und
+  // aus "Kabel" und "Kabl" wuerden zwei Ordner.
+  const vorhandeneOrdner = ordnerListe(alle);
+  const ordnerJetzt = vorhanden ? vorhanden.ordner : ordnerVorgabe;
+  const NEU = '\u0000neu';
+  const ordnerWahl = h('select', {},
+    h('option', { value: '', text: '– ohne Ordner –' }),
+    ...vorhandeneOrdner.map((o) => h('option', { value: o, text: o, selected: o === ordnerJetzt })),
+    h('option', { value: NEU, text: 'Neuer Ordner…' }),
+  );
+  const ordnerNeu = h('input', { type: 'text', placeholder: 'Name des neuen Ordners', hidden: true, style: 'margin-top:6px' });
+  ordnerWahl.addEventListener('change', () => {
+    ordnerNeu.hidden = ordnerWahl.value !== NEU;
+    if (!ordnerNeu.hidden) ordnerNeu.focus();
+  });
+  const ordnerGewaehlt = (): string | undefined =>
+    ordnerWahl.value === NEU ? ordnerAngleichen(ordnerNeu.value, vorhandeneOrdner) : ordnerWahl.value || undefined;
 
   // Codes werden erst mit "Speichern" geschrieben: "Abbrechen" soll wirklich
   // nichts veraendert haben.
@@ -171,11 +358,12 @@ export async function artikelBearbeiten(id?: number, oben?: HTMLElement): Promis
           if (a.id !== vorhanden?.id) await db.artikel.update(a.id!, { codes: a.codes!.filter((x) => x !== c) });
         }
       }
+      const ordner = ordnerGewaehlt();
       if (vorhanden) {
-        await db.artikel.update(vorhanden.id!, { name: n, einheit: einheit.value, codes });
+        await db.artikel.update(vorhanden.id!, { name: n, einheit: einheit.value, codes, ordner });
         return vorhanden.id!;
       }
-      return (await db.artikel.add({ name: n, einheit: einheit.value, anzahl: 0, codes })) ?? null;
+      return (await db.artikel.add({ name: n, einheit: einheit.value, anzahl: 0, codes, ...(ordner ? { ordner } : {}) })) ?? null;
     });
   };
 
@@ -185,6 +373,11 @@ export async function artikelBearbeiten(id?: number, oben?: HTMLElement): Promis
       oben ?? null,
       h('label', { class: 'feld' }, h('span', { text: 'Bezeichnung' }), name),
       h('label', { class: 'feld' }, h('span', { text: 'Einheit' }), einheit),
+      h('div', { class: 'feld' },
+        h('span', { text: 'Ordner' }),
+        ordnerWahl,
+        ordnerNeu,
+      ),
       h('div', { class: 'feld' },
         h('span', { text: 'Strich- und QR-Codes' }),
         liste,
@@ -245,6 +438,7 @@ async function etikettenDrucken(vorauswahl: number[] = []): Promise<void> {
   // verweigert Safari den Dialog.
   const { BOEGEN, etikettenPdf } = await import('../lib/etiketten');
 
+  const ordner = ordnerListe(artikel);
   const zeilen = artikel.map((a) => {
     const an = h('input', { type: 'checkbox', checked: vorauswahl.includes(a.id!) });
     const art = h('select', { 'aria-label': `Codeart für ${a.name}` },
@@ -260,6 +454,20 @@ async function etikettenDrucken(vorauswahl: number[] = []): Promise<void> {
     // Wer eine EAN hat, braucht kein Etikett: der Strichcode klebt schon am Material.
     h('button', { class: 'knopf leise', type: 'button', text: 'Ohne Strichcode', onclick: () => ankreuzen((a) => !(a.codes ?? []).some((c) => !istEigenerCode(c))) }),
     h('button', { class: 'knopf leise', type: 'button', text: 'Keine', onclick: () => ankreuzen(() => false) }),
+    // Ganze Ordner auf einmal - etwa alle Loxone-Teile fuer die Werkstatt.
+    ordner.length
+      ? h('select', {
+          'aria-label': 'Ordner ankreuzen',
+          onchange: (ev: Event) => {
+            const wert = (ev.target as HTMLSelectElement).value;
+            if (wert) ankreuzen((a) => a.ordner === wert);
+            (ev.target as HTMLSelectElement).value = '';
+          },
+        },
+          h('option', { value: '', text: 'Ordner …' }),
+          ...ordner.map((o) => h('option', { value: o, text: o })),
+        )
+      : null,
     h('select', {
       'aria-label': 'Codeart für alle',
       onchange: (ev: Event) => {
@@ -390,6 +598,14 @@ async function baustelleBearbeiten(id: number): Promise<void> {
     [
       h('label', { class: 'feld' }, h('span', { text: 'Ort' }), ort),
       h('label', { class: 'feld' }, h('span', { text: 'Kunde' }), kundeFeld),
+      // Auch fuer abgeschlossene Projekte, die im Dashboard nicht mehr stehen.
+      h('button', {
+        class: 'knopf zweit', type: 'button', text: 'Verlauf ansehen…',
+        onclick: () => {
+          document.querySelector('.schatten')?.remove();
+          void verlaufZeigen(b);
+        },
+      }),
       h('button', {
         class: 'knopf gefahr', type: 'button', text: 'Projekt löschen…',
         onclick: () => {
@@ -443,8 +659,9 @@ export async function projektLoeschen(id: number, zurueck?: () => void): Promise
             melden('Nicht gelöscht', 'Die Zahl stimmte nicht. Das Projekt ist unverändert.');
             return;
           }
-          await db.transaction('rw', db.baustellen, db.scheine, async () => {
+          await db.transaction('rw', db.baustellen, db.scheine, db.verlauf, async () => {
             await db.scheine.where('baustelleId').equals(id).delete();
+            await db.verlauf.where('baustelleId').equals(id).delete();
             await db.baustellen.delete(id);
           });
           neu();

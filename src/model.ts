@@ -13,6 +13,50 @@ export interface Artikel {
    * Artikel. Nur zum Wiederfinden: nie auf PDF oder CSV.
    */
   codes?: string[];
+  /**
+   * Ordner im Archiv, etwa "Kabel" oder "Loxone". Eine Ebene, kein Baum —
+   * am Handy will niemand durch Unterordner tippen. Ein Ordner besteht,
+   * solange ein Artikel darin liegt; eine eigene Liste gibt es nicht.
+   */
+  ordner?: string;
+}
+
+/**
+ * Was im Verlauf eines Projekts steht. Die Scheine zeigen nur den Stand —
+ * der Verlauf zeigt, wann wie viel dazukam, geaendert oder geloescht wurde.
+ */
+export type VerlaufArt =
+  /** Artikel erstmals auf den Schein */
+  | 'neu'
+  /** zu einer vorhandenen Position dazugezaehlt */
+  | 'dazu'
+  /** Menge von Hand geaendert */
+  | 'geaendert'
+  /** Position entfernt */
+  | 'geloescht'
+  | 'geteilt'
+  | 'uebergeben'
+  | 'uebernommen'
+  | 'nachtrag';
+
+export interface VerlaufEintrag {
+  id?: number;
+  baustelleId: number;
+  zeit: number;
+  art: VerlaufArt;
+  /** Artikel — fehlt bei Ereignissen, die den ganzen Schein betreffen. */
+  name?: string;
+  einheit?: string;
+  /** Die Veraenderung: +5 beim Dazuzaehlen, -40 beim Loeschen. */
+  menge?: number;
+  /** Menge der Position danach. */
+  stand?: number;
+  /** Positionen des Scheins, bei Ereignissen am ganzen Schein. */
+  positionen?: number;
+  /** Welcher Schein, wenn es nicht schlicht der eigene ist. */
+  schein?: string;
+  /** Wo es geschah — mit der Dropbox laeuft der Verlauf von Handy und PC zusammen. */
+  geraet?: 'Handy' | 'PC';
 }
 
 export interface Kunde {
