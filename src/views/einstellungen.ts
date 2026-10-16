@@ -257,7 +257,7 @@ function archivKarte(): HTMLElement {
   return h('div', { class: 'karte' },
     h('h2', { text: 'Archiv weitergeben' }),
     h('p', {
-      text: `Nur das Archiv – Artikel mit Einheit und Codes, ohne Projekte. ${AM_PC ? 'Am Handy' : 'Am anderen Gerät'} über „Datei einlesen" im Dashboard übernehmen: Neue Artikel kommen dazu, gleichnamige übernehmen Einheit und Codes, gelöscht wird nichts.`,
+      text: `Nur das Archiv – Artikel mit Einheit, Artikelnummer und Codes, ohne Projekte. ${AM_PC ? 'Am Handy' : 'Am anderen Gerät'} über „Datei einlesen" im Dashboard übernehmen: Neue Artikel kommen dazu, gleichnamige übernehmen Einheit und Codes, gelöscht wird nichts.`,
     }),
     h('button', {
       class: 'knopf zweit', type: 'button', text: 'Archiv weitergeben', style: 'margin-top:10px',
@@ -299,7 +299,7 @@ function excelKarte(): HTMLElement {
 
   return h('div', { class: 'karte' },
     h('h2', { text: 'Archiv als Excel' }),
-    h('p', { text: 'Viele Artikel auf einmal: die Vorlage in Excel befüllen – Bezeichnung, Einheit und auf Wunsch Ordner und die Nummer unter dem Strichcode – und hier einlesen. Gelöscht wird dabei nichts.' }),
+    h('p', { text: 'Viele Artikel auf einmal: die Vorlage in Excel befüllen – Bezeichnung, Einheit und auf Wunsch Artikelnummer, Ordner und die Nummer unter dem Strichcode – und hier einlesen. Gelöscht wird dabei nichts.' }),
     h('div', { class: 'knopf-stapel' },
       h('button', {
         class: 'knopf zweit', type: 'button', text: 'Vorlage herunterladen',

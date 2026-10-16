@@ -6,7 +6,8 @@ import { xlsxDatei, type Bild, type Spalte, type Tabelle, type Vorspann } from '
 
 // Der Schein als Excel-Datei fuers Buero. Frueher eine CSV — die war reiner
 // Text, ohne Logo und ohne Kopf. Die Spalten sind dieselben geblieben, damit
-// Vorlagen und Gewohnheiten im Buero weiter passen.
+// Vorlagen und Gewohnheiten im Buero weiter passen; dazugekommen ist nur die
+// Artikelnummer vor dem Material.
 
 // Das Buero bekommt weiterhin "Baustelle" — dort haengen Vorlagen und
 // Gewohnheiten daran. In der App heisst dasselbe Ding "Projekt".
@@ -16,6 +17,10 @@ const SPALTEN: Spalte[] = [
   { titel: 'Kunde', breite: 22 },
   { titel: 'Baustelle', breite: 24 },
   { titel: 'Bereich', breite: 12 },
+  // Immer da, auch leer: so stehen die Spalten bei jedem Schein gleich, und
+  // mehrere Scheine lassen sich untereinanderkopieren. Als Text, damit
+  // fuehrende Nullen bleiben.
+  { titel: 'Artikelnummer', breite: 16, text: true },
   { titel: 'Material', breite: 42 },
   // Als Zahl: das Buero soll summieren koennen, ohne Komma-Text umzuwandeln.
   { titel: 'Menge', breite: 9, zahl: true },
@@ -78,7 +83,7 @@ export function scheinTabelle(
     zeilen: schein.positionen.map((p) => [
       // Menge mit Punkt: so erkennt die Datei sie als Zahl; Excel zeigt
       // sie dann mit Komma.
-      ...kopf, p.name, String(p.menge), p.einheit, nachtrag, wer,
+      ...kopf, p.nummer ?? '', p.name, String(p.menge), p.einheit, nachtrag, wer,
     ]),
   };
 }

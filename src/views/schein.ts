@@ -4,7 +4,7 @@ import {
 } from '../db';
 import { ordnerListe } from '../lib/ordner';
 import {
-  istZaehlbar, positionHinzufuegen, projektTitel, projektUnter, runden,
+  istZaehlbar, nummernErgaenzen, positionHinzufuegen, projektTitel, projektUnter, runden,
   type Artikel, type Baustelle, type Kunde, type Position, type Schein,
 } from '../model';
 import { ersteller, erstellerText, firmenkopf, gehe, neu, zustand } from '../store';
@@ -404,6 +404,7 @@ async function suchfeld(baustelle: Baustelle): Promise<HTMLElement> {
         h('button', { type: 'button', onclick: () => waehlen(a) },
           h('span', { class: 'nm', text: a.name }),
           a.perCode ? h('span', { class: 'plakette', text: 'Code' }) : null,
+          a.perNummer ? h('span', { class: 'plakette', text: 'Nr.' }) : null,
           a.hier ? h('span', { class: 'plakette', text: 'hier' }) : null,
           h('span', { class: 'eh', text: a.einheit }),
         ),
@@ -411,7 +412,7 @@ async function suchfeld(baustelle: Baustelle): Promise<HTMLElement> {
     }
     // Ein Code, der passt, ist die Antwort - daraus einen Artikel namens
     // "4006381333931" anzulegen, waere nur ein Stolperstein.
-    if (q.length >= 2 && !gefunden.some((a) => a.perCode || a.name.toLowerCase() === q.toLowerCase())) {
+    if (q.length >= 2 && !gefunden.some((a) => a.perCode || a.perNummer || a.name.toLowerCase() === q.toLowerCase())) {
       treffer.append(
         h('button', { type: 'button', onclick: () => neuerArtikel(q) },
           h('span', { class: 'nm neu', text: `„${q}" neu anlegen` }),
@@ -563,7 +564,9 @@ async function neuerArtikel(name: string): Promise<void> {
 async function mengeUebernehmen(name: string, n: number, einheit: string): Promise<void> {
   const schein = await db.scheine.get(gewaehlt!);
   if (!schein) return;
-  const { positionen, index } = positionHinzufuegen(schein.positionen, name, n, einheit);
+  // Die Artikelnummer wird mit abgeschrieben, wie Name und Einheit.
+  const artikel = await db.artikel.where('name').equals(name).first();
+  const { positionen, index } = positionHinzufuegen(schein.positionen, name, n, einheit, artikel?.nummer);
   await db.scheine.update(schein.id!, { positionen });
   await vermerken({
     baustelleId: schein.baustelleId,
@@ -624,8 +627,8 @@ async function senden(baustelle: Baustelle, kunde: Kunde | undefined, schein: Sc
   const buero = zustand.einstellungen?.buero?.trim();
   if (buero) await inZwischenablage(buero);
 
-  const e = await einstellungenLesen();
-  const stand: Schein = { ...schein, beendet: Date.now() };
+  const [e, archiv] = await Promise.all([einstellungenLesen(), db.artikel.toArray()]);
+  const stand: Schein = { ...schein, beendet: Date.now(), positionen: nummernErgaenzen(schein.positionen, archiv) };
   // jsPDF ist der groesste Brocken und wird erst hier gebraucht. Nachladen
   // statt mitschleppen: der Start auf der Baustelle bleibt leicht, und der
   // Service Worker hat die Datei trotzdem im Vorrat.

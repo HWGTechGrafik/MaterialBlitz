@@ -159,7 +159,7 @@ export async function artikelMitCode(code: string): Promise<Artikel | undefined>
 export async function suchen(
   begriff: string,
   baustelleId?: number,
-): Promise<Array<Artikel & { hier: number; perCode?: boolean }>> {
+): Promise<Array<Artikel & { hier: number; perCode?: boolean; perNummer?: boolean }>> {
   const q = begriff.trim().toLowerCase();
   if (q.length < 2) return [];
   const [alle, hier] = await Promise.all([
@@ -168,12 +168,16 @@ export async function suchen(
   ]);
   const code = codeNormalisieren(begriff);
   const perCode = alle.filter((a) => a.codes?.includes(code));
+  // Die Artikelnummer genau getroffen: so eindeutig wie ein Code.
+  const perNummer = alle.filter((a) => !perCode.includes(a) && a.nummer?.toLowerCase() === q);
   const perName = alle
-    .filter((a) => !perCode.includes(a) && a.name.toLowerCase().includes(q))
+    .filter((a) => !perCode.includes(a) && !perNummer.includes(a)
+      && (a.name.toLowerCase().includes(q) || !!a.nummer?.toLowerCase().includes(q)))
     .map((a) => ({ ...a, hier: hier.get(a.name) ?? 0 }))
     .sort((a, b) => b.hier - a.hier || b.anzahl - a.anzahl);
   return [
     ...perCode.map((a) => ({ ...a, hier: hier.get(a.name) ?? 0, perCode: true })),
+    ...perNummer.map((a) => ({ ...a, hier: hier.get(a.name) ?? 0, perNummer: true })),
     ...perName,
   ].slice(0, 8);
 }

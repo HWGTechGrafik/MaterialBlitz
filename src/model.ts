@@ -19,6 +19,12 @@ export interface Artikel {
    * solange ein Artikel darin liegt; eine eigene Liste gibt es nicht.
    */
   ordner?: string;
+  /**
+   * Artikelnummer, etwa die des Grosshaendlers oder der eigenen
+   * Warenwirtschaft. Anders als die Codes steht sie auf PDF und Excel des
+   * Scheins — damit das Buero ohne Nachschlagen bestellen und verrechnen kann.
+   */
+  nummer?: string;
 }
 
 /**
@@ -104,6 +110,8 @@ export interface Position {
   name: string;
   menge: number;
   einheit: string;
+  /** Artikelnummer beim Aufschreiben — fehlt, wenn der Artikel keine hatte. */
+  nummer?: string;
 }
 
 /** Nur *offen* ist bearbeitbar; die anderen beiden sind Endzustaende. */
@@ -200,15 +208,32 @@ export function positionHinzufuegen(
   name: string,
   menge: number,
   einheit: string,
+  nummer?: string,
 ): { positionen: Position[]; index: number } {
   const i = positionen.findIndex((p) => p.name === name && p.einheit === einheit);
   if (i >= 0) {
     const kopie = positionen.slice();
     const alt = kopie[i]!;
-    kopie[i] = { ...alt, menge: runden(alt.menge + menge) };
+    // Eine inzwischen nachgetragene Nummer kommt dazu; eine vorhandene bleibt.
+    kopie[i] = { ...alt, menge: runden(alt.menge + menge), ...(!alt.nummer && nummer ? { nummer } : {}) };
     return { positionen: kopie, index: i };
   }
-  return { positionen: [...positionen, { name, menge, einheit }], index: positionen.length };
+  return { positionen: [...positionen, { name, menge, einheit, ...(nummer ? { nummer } : {}) }], index: positionen.length };
+}
+
+/**
+ * Positionen fuer PDF und Excel: wer ohne Nummer aufgeschrieben wurde, weil
+ * sie im Archiv erst spaeter dazukam, bekommt sie von dort. Eine
+ * mitgeschriebene Nummer bleibt — die Position ist eine Abschrift.
+ */
+export function nummernErgaenzen(positionen: Position[], archiv: Artikel[]): Position[] {
+  // Der Name ist im Archiv eindeutig; die Einheit kann sich seither geaendert haben.
+  const nachName = new Map(archiv.filter((a) => a.nummer).map((a) => [a.name, a.nummer!]));
+  return positionen.map((p) => {
+    if (p.nummer) return p;
+    const nummer = nachName.get(p.name);
+    return nummer ? { ...p, nummer } : p;
+  });
 }
 
 /** Gegen Rundungsfehler beim Addieren von Kommazahlen (0,1 + 0,2). */

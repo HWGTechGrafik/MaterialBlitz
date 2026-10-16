@@ -1,6 +1,6 @@
 import { db, einstellungenLesen, einstellungenSchreiben } from '../db';
 import {
-  projektTitel,
+  nummernErgaenzen, projektTitel,
   type Artikel, type Baustelle, type Einstellungen, type Kunde, type Position, type Schein, type VerlaufEintrag,
 } from '../model';
 import { dateinameTeil, datumSortierbar, zeit, zeitKompakt } from './format';
@@ -45,7 +45,7 @@ export interface Umschlag {
     /** Wofuer der Grundstock gedacht ist, etwa "Elektro". */
     titel: string;
     /** Codes nur im weitergegebenen Archiv; der Grundstock hat keine. */
-    artikel: Array<{ name: string; einheit: string; codes?: string[]; ordner?: string }>;
+    artikel: Array<{ name: string; einheit: string; codes?: string[]; ordner?: string; nummer?: string }>;
     /** Einheiten, die die Artikel brauchen und die feste Liste nicht hat. */
     einheiten: string[];
     /**
@@ -85,7 +85,9 @@ export async function scheinPacken(
     absender,
     schein: {
       bezeichnung: schein.bezeichnung,
-      positionen: schein.positionen,
+      // Fehlende Artikelnummern aus dem eigenen Archiv: beim Kollegen fehlen
+      // sie womoeglich ganz.
+      positionen: nummernErgaenzen(schein.positionen, await db.artikel.toArray()),
       // Baustelle und Kunde wandern mit: ein Schein ohne sie laesst sich
       // beim Empfaenger nicht zuordnen.
       baustelle: { ort: baustelle.ort, kunde: kunde?.name },
@@ -158,6 +160,7 @@ export async function archivPacken(absender: string | undefined): Promise<File> 
         einheit: a.einheit,
         ...(a.codes?.length ? { codes: a.codes } : {}),
         ...(a.ordner ? { ordner: a.ordner } : {}),
+        ...(a.nummer ? { nummer: a.nummer } : {}),
       })),
       einheiten: [...new Set(artikel.map((a) => a.einheit))],
     },
@@ -256,7 +259,8 @@ export async function scheinUebernehmen(u: Umschlag): Promise<void> {
   // ausgerechnet fuer das Material, an dem weitergearbeitet wird.
   for (const p of daten.positionen) {
     const vorhanden = await db.artikel.where('name').equals(p.name).first();
-    if (!vorhanden) await db.artikel.add({ name: p.name, einheit: p.einheit, anzahl: 1 });
+    if (!vorhanden) await db.artikel.add({ name: p.name, einheit: p.einheit, anzahl: 1, ...(p.nummer ? { nummer: p.nummer } : {}) });
+    else if (!vorhanden.nummer && p.nummer) await db.artikel.update(vorhanden.id!, { nummer: p.nummer });
   }
 
   const herkunft = `von ${u.absender || 'unbekannt'}, ${zeit(u.erzeugt)}`;
@@ -317,8 +321,15 @@ export async function sicherungEinspielen(
       }
       // Der eigene Ordner geht vor; fehlt er, kommt der aus der Sicherung.
       const ordner = da?.ordner ?? a.ordner;
-      if (da) await db.artikel.update(da.id!, { anzahl: Math.max(da.anzahl, a.anzahl), codes, ordner });
-      else await db.artikel.add({ name: a.name, einheit: a.einheit, anzahl: a.anzahl, codes, ...(ordner ? { ordner } : {}) });
+      // Ebenso die Artikelnummer.
+      const nummer = da?.nummer ?? a.nummer;
+      if (da) await db.artikel.update(da.id!, { anzahl: Math.max(da.anzahl, a.anzahl), codes, ordner, nummer });
+      else {
+        await db.artikel.add({
+          name: a.name, einheit: a.einheit, anzahl: a.anzahl, codes,
+          ...(ordner ? { ordner } : {}), ...(nummer ? { nummer } : {}),
+        });
+      }
     }
     // Kunden ueber den Namen zusammenfuehren und merken, welche alte Nummer
     // zu welcher neuen gehoert — die Projekte haengen daran.
@@ -420,7 +431,10 @@ export async function katalogEinlesen(
       const da = await db.artikel.where('name').equals(a.name).first();
       if (!k.massgeblich) {
         if (da) continue;
-        await db.artikel.add({ name: a.name, einheit: a.einheit, anzahl: 0, ...(a.ordner ? { ordner: a.ordner } : {}) });
+        await db.artikel.add({
+          name: a.name, einheit: a.einheit, anzahl: 0,
+          ...(a.ordner ? { ordner: a.ordner } : {}), ...(a.nummer ? { nummer: a.nummer } : {}),
+        });
         neu++;
         continue;
       }
@@ -437,14 +451,19 @@ export async function katalogEinlesen(
           name: a.name, einheit: a.einheit, anzahl: 0,
           ...(mitgebracht.length ? { codes: [...mitgebracht] } : {}),
           ...(a.ordner ? { ordner: a.ordner } : {}),
+          ...(a.nummer ? { nummer: a.nummer } : {}),
         });
         neu++;
         continue;
       }
       const codes = [...new Set([...(da.codes ?? []), ...mitgebracht])];
       const ordner = k.mitOrdner ? a.ordner : da.ordner;
-      if (da.einheit !== a.einheit || codes.length !== (da.codes?.length ?? 0) || ordner !== da.ordner) {
-        await db.artikel.update(da.id!, { einheit: a.einheit, codes, ordner });
+      // Eine Nummer der Datei gilt; fehlt sie dort, bleibt die eigene —
+      // aeltere Fassungen kennen das Feld nicht.
+      const nummer = a.nummer ?? da.nummer;
+      if (da.einheit !== a.einheit || codes.length !== (da.codes?.length ?? 0) || ordner !== da.ordner
+        || nummer !== da.nummer) {
+        await db.artikel.update(da.id!, { einheit: a.einheit, codes, ordner, nummer });
         angeglichen++;
       }
     }

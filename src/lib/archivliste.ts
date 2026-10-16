@@ -14,17 +14,23 @@ import { csvLesen, istZip, xlsxDatei, xlsxLesen, type Tabelle } from './xlsx';
  * Pflegewerkzeug fuers Archiv, nichts, was zum Kunden geht.
  *
  * Einlesen kommt nur **dazu**, wie beim weitergegebenen Archiv: geloescht
- * wird nichts, Codes kommen zu den vorhandenen, Einheit und Ordner der Liste gelten.
+ * wird nichts, Codes kommen zu den vorhandenen, Einheit, Ordner und
+ * Artikelnummer der Liste gelten.
  */
 
 const BLATT = 'Artikel';
 
 const SPALTEN: Tabelle['spalten'] = [
   { titel: 'Bezeichnung', breite: 46 },
+  // Als Text: Artikelnummern haben oft fuehrende Nullen.
+  { titel: 'Artikelnummer', breite: 18, text: true },
   { titel: 'Einheit', breite: 10 },
   { titel: 'Ordner', breite: 20 },
   { titel: 'Codes', breite: 34, text: true },
 ];
+
+/** Dort haengt die Auswahlliste der Einheiten. */
+const SPALTE_EINHEIT = SPALTEN.findIndex((s) => s.titel === 'Einheit');
 
 // ------------------------------------------------------------- Ausgeben
 
@@ -32,6 +38,7 @@ const ANLEITUNG = [
   'So wird die Liste befüllt',
   'Im Blatt „Artikel“ steht je Zeile ein Artikel. Die erste Zeile mit den Spaltenköpfen bitte stehen lassen.',
   'Bezeichnung (Pflicht): so, wie sie auf dem Schein stehen soll, etwa „NYM-J 3x1,5“. Gibt es den Artikel im Archiv schon unter genau diesem Namen, wird er ergänzt statt doppelt angelegt.',
+  'Artikelnummer (freiwillig): etwa die Nummer des Großhändlers oder aus der eigenen Warenwirtschaft. Sie steht beim Senden auf PDF und Excel des Materialscheins, so kann das Büro ohne Nachschlagen bestellen und verrechnen. Die Spalte ist als Text formatiert, führende Nullen bleiben. Leer heißt bei vorhandenen Artikeln: die Nummer bleibt, wie sie ist.',
   'Einheit: aus der Auswahl wählen. Eine Einheit, die die App noch nicht kennt, wird beim Einlesen dazugenommen. Leer heißt bei neuen Artikeln „Stk“, bei vorhandenen bleibt die bisherige.',
   'Ordner (freiwillig): etwa „Kabel“, „Schaltermaterial“ oder „Loxone“. Im Archiv liegen die Artikel dann in diesen Ordnern, beim Aufschreiben findet man sie auch darüber. Ein neuer Name wird ein neuer Ordner; leer heißt bei vorhandenen Artikeln: der Ordner bleibt, wie er ist.',
   'Codes (freiwillig): die Nummer unter dem Strichcode (EAN) oder ein eigener Code „MB-…“. Mehrere Codes mit Komma trennen. Die Spalte ist als Text formatiert – bitte so lassen, sonst macht Excel aus einer EAN „4,00638E+12“ und streicht führende Nullen.',
@@ -39,7 +46,7 @@ const ANLEITUNG = [
   'Einlesen',
   'Als .xlsx speichern (CSV geht auch) und in MaterialBlitz unter Einstellungen › „Archiv als Excel“ › „Excel-Liste einlesen“ wählen. Vorher zeigt die App, was dazukommt und was sich ändert.',
   'Gelöscht wird dabei nichts: Artikel, die nicht in der Liste stehen, bleiben. Codes kommen zu den vorhandenen dazu. Ein Code gehört genau einem Artikel – hing er bisher an einem anderen, wandert er herüber.',
-  'Weitere Spalten (Preis, Artikelnummer …) stören nicht, sie werden übergangen. Die Spalten werden auch erkannt, wenn sie „Artikel“, „Material“, „EAN“ oder „Strichcode“ heißen – eine Liste vom Großhändler lässt sich oft direkt einlesen.',
+  'Weitere Spalten (Preis, Hersteller …) stören nicht, sie werden übergangen. Die Spalten werden auch erkannt, wenn sie „Artikel“, „Material“, „Art.-Nr.“, „EAN“ oder „Strichcode“ heißen – eine Liste vom Großhändler lässt sich oft direkt einlesen.',
   '',
   'Material ohne Strichcode',
   'Beim Einlesen kann jeder Artikel ohne Code gleich einen eigenen Code bekommen. Im Archiv druckt „Etiketten drucken“ dazu QR- oder Strichcode-Etiketten. Wer die Liste danach wieder ausgibt, sieht die vergebenen Codes in der Spalte „Codes“.',
@@ -59,7 +66,7 @@ function anleitung(): Tabelle {
 /** Leere Vorlage mit Auswahlliste der Einheiten und Anleitung. */
 export async function vorlageErzeugen(): Promise<File> {
   const { einheiten } = await einstellungenLesen();
-  const artikel: Tabelle = { name: BLATT, spalten: SPALTEN, zeilen: [], kopf: true, auswahl: { spalte: 1, werte: einheiten } };
+  const artikel: Tabelle = { name: BLATT, spalten: SPALTEN, zeilen: [], kopf: true, auswahl: { spalte: SPALTE_EINHEIT, werte: einheiten } };
   return xlsxDatei([artikel, anleitung()], 'MaterialBlitz_Archiv_Vorlage.xlsx');
 }
 
@@ -74,9 +81,9 @@ export async function archivAlsExcel(): Promise<File> {
   const artikel: Tabelle = {
     name: BLATT,
     spalten: [...SPALTEN, { titel: 'Verwendet', breite: 11 }],
-    zeilen: alle.map((a) => [a.name, a.einheit, a.ordner ?? '', (a.codes ?? []).join(', '), String(a.anzahl)]),
+    zeilen: alle.map((a) => [a.name, a.nummer ?? '', a.einheit, a.ordner ?? '', (a.codes ?? []).join(', '), String(a.anzahl)]),
     kopf: true,
-    auswahl: { spalte: 1, werte: einheiten },
+    auswahl: { spalte: SPALTE_EINHEIT, werte: einheiten },
   };
   return xlsxDatei([artikel, anleitung()], `MaterialBlitz_Archiv_${datumSortierbar(Date.now())}.xlsx`);
 }
@@ -89,6 +96,8 @@ export interface Eintrag {
   einheit?: string;
   /** Ebenso: leer laesst den bisherigen Ordner. */
   ordner?: string;
+  /** Ebenso: leer laesst die bisherige Artikelnummer. */
+  nummer?: string;
   codes: string[];
 }
 
@@ -103,8 +112,14 @@ export interface Liste {
 }
 
 /** Kopfzeile erkennen — auch in Listen anderer Herkunft. */
-function spaltenArt(titel: string): 'name' | 'einheit' | 'ordner' | 'codes' | null {
+type Art = 'name' | 'nummer' | 'einheit' | 'ordner' | 'codes';
+
+function spaltenArt(titel: string): Art | null {
   const t = titel.toLowerCase().replace(/[^a-zäöüß]/g, '');
+  // Vor dem Namen pruefen: "Artikelnummer" ist nicht "Artikel". Ein blosses
+  // "Nr." bleibt aussen vor — oft ist das nur die laufende Zeilennummer.
+  if (['artikelnummer', 'artikelnr', 'artnr', 'artikelno', 'nummer', 'materialnummer', 'materialnr',
+    'matnr', 'bestellnummer', 'bestellnr', 'lieferantenartikelnummer', 'sku'].includes(t)) return 'nummer';
   if (['bezeichnung', 'artikel', 'artikelbezeichnung', 'artikelname', 'name', 'material',
     'materialbezeichnung', 'beschreibung', 'kurztext', 'text'].includes(t)) return 'name';
   if (['einheit', 'me', 'mengeneinheit', 'eh', 'unit', 'masseinheit', 'maßeinheit'].includes(t)) return 'einheit';
@@ -136,9 +151,9 @@ export async function listeLesen(d: File): Promise<Liste | { fehler: string }> {
   // Die Kopfzeile muss nicht ganz oben stehen: Listen vom Grosshaendler
   // haben oft erst ein paar Zeilen Briefkopf.
   let kopf = -1;
-  let sp: Record<'name' | 'einheit' | 'ordner' | 'codes', number> = { name: -1, einheit: -1, ordner: -1, codes: -1 };
+  let sp: Record<Art, number> = { name: -1, nummer: -1, einheit: -1, ordner: -1, codes: -1 };
   for (let r = 0; r < Math.min(zeilen.length, 15) && kopf < 0; r++) {
-    const s = { name: -1, einheit: -1, ordner: -1, codes: -1 };
+    const s = { name: -1, nummer: -1, einheit: -1, ordner: -1, codes: -1 };
     (zeilen[r] ?? []).forEach((t, i) => {
       const art = spaltenArt(t);
       if (art && s[art] < 0) s[art] = i;
@@ -167,8 +182,9 @@ export async function listeLesen(d: File): Promise<Liste | { fehler: string }> {
     const einheitRoh = zelle(sp.einheit);
     const codesRoh = zelle(sp.codes);
     const ordnerRoh = zelle(sp.ordner);
+    const nummer = zelle(sp.nummer).replace(/\s+/g, ' ') || undefined;
     if (!name) {
-      if (einheitRoh || codesRoh || ordnerRoh) hinweise.push(`Zeile ${nr}: keine Bezeichnung – übergangen.`);
+      if (einheitRoh || codesRoh || ordnerRoh || nummer) hinweise.push(`Zeile ${nr}: keine Bezeichnung – übergangen.`);
       continue;
     }
 
@@ -207,10 +223,11 @@ export async function listeLesen(d: File): Promise<Liste | { fehler: string }> {
       hinweise.push(`Zeile ${nr}: „${name}“ stand schon in Zeile ${zeileVonName.get(name)} – zusammengefasst.`);
       if (einheit) da.einheit = einheit;
       if (ordner) da.ordner = ordner;
+      if (nummer) da.nummer = nummer;
       for (const c of codes) if (!da.codes.includes(c)) da.codes.push(c);
       continue;
     }
-    nachName.set(name, { name, einheit, ordner, codes });
+    nachName.set(name, { name, einheit, ordner, nummer, codes });
     zeileVonName.set(name, nr);
   }
 
@@ -249,13 +266,17 @@ function anwenden(liste: Liste, bestand: Artikel[], eigeneCodes: boolean) {
     let a = nachName.get(e.name);
     const warNeu = !a;
     if (!a) {
-      a = { name: e.name, einheit: e.einheit ?? 'Stk', anzahl: 0, codes: [], ...(e.ordner ? { ordner: e.ordner } : {}) };
+      a = {
+        name: e.name, einheit: e.einheit ?? 'Stk', anzahl: 0, codes: [],
+        ...(e.ordner ? { ordner: e.ordner } : {}), ...(e.nummer ? { nummer: e.nummer } : {}),
+      };
       nachName.set(e.name, a);
       neue.push(a);
     }
     let anders = false;
     if (!warNeu && e.einheit && e.einheit !== a.einheit) { a.einheit = e.einheit; anders = true; }
     if (!warNeu && e.ordner && e.ordner !== a.ordner) { a.ordner = e.ordner; anders = true; }
+    if (!warNeu && e.nummer && e.nummer !== a.nummer) { a.nummer = e.nummer; anders = true; }
 
     for (const c of e.codes) {
       const traeger = nachCode.get(c);

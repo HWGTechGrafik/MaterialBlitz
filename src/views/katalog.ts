@@ -83,7 +83,7 @@ function artikelReihe(a: Artikel): HTMLElement {
     h('div', {},
       h('div', { class: 'haupt', text: a.name }),
       h('div', { class: 'neben',
-        text: `${a.einheit} · ${a.anzahl}× verwendet`
+        text: `${a.nummer ? `Nr. ${a.nummer} · ` : ''}${a.einheit} · ${a.anzahl}× verwendet`
           + (a.codes?.length ? ` · ${a.codes.length === 1 ? '1 Code' : `${a.codes.length} Codes`}` : '') }),
     ),
     h('span', { class: 'pfeil', html: '&rsaquo;' }),
@@ -263,6 +263,11 @@ export async function artikelBearbeiten(id?: number, oben?: HTMLElement, ordnerV
   const einheit = h('select', {},
     ...e.einheiten.map((u) => h('option', { value: u, text: u, selected: u === vorhanden?.einheit })),
   );
+  const nummer = h('input', {
+    type: 'text', value: vorhanden?.nummer ?? '', placeholder: 'freiwillig, steht auf PDF und Excel',
+    autocomplete: 'off', autocapitalize: 'characters',
+  });
+  nummer.spellcheck = false;
 
   // Auswahl statt Freitext: mit Handschuhen vertippt man sich leicht, und
   // aus "Kabel" und "Kabl" wuerden zwei Ordner.
@@ -359,11 +364,14 @@ export async function artikelBearbeiten(id?: number, oben?: HTMLElement, ordnerV
         }
       }
       const ordner = ordnerGewaehlt();
+      const nr = nummer.value.trim() || undefined;
       if (vorhanden) {
-        await db.artikel.update(vorhanden.id!, { name: n, einheit: einheit.value, codes, ordner });
+        await db.artikel.update(vorhanden.id!, { name: n, einheit: einheit.value, codes, ordner, nummer: nr });
         return vorhanden.id!;
       }
-      return (await db.artikel.add({ name: n, einheit: einheit.value, anzahl: 0, codes, ...(ordner ? { ordner } : {}) })) ?? null;
+      return (await db.artikel.add({
+        name: n, einheit: einheit.value, anzahl: 0, codes, ...(ordner ? { ordner } : {}), ...(nr ? { nummer: nr } : {}),
+      })) ?? null;
     });
   };
 
@@ -373,6 +381,7 @@ export async function artikelBearbeiten(id?: number, oben?: HTMLElement, ordnerV
       oben ?? null,
       h('label', { class: 'feld' }, h('span', { text: 'Bezeichnung' }), name),
       h('label', { class: 'feld' }, h('span', { text: 'Einheit' }), einheit),
+      h('label', { class: 'feld' }, h('span', { text: 'Artikelnummer' }), nummer),
       h('div', { class: 'feld' },
         h('span', { text: 'Ordner' }),
         ordnerWahl,

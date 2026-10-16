@@ -35,8 +35,11 @@ export function pdfErzeugen(
   const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
   const breite = doc.internal.pageSize.getWidth();
   const stand = schein.beendet ?? Date.now();
+  // Die Spalte Art.-Nr. nur, wenn eine Position eine hat — wer ohne
+  // Nummern arbeitet, behaelt das gewohnte Blatt mit breiter Materialspalte.
+  const mitNummer = schein.positionen.some((p) => p.nummer);
   const zeilen = schein.positionen.map((p, i) => [
-    String(i + 1), p.name, menge(p.menge), p.einheit,
+    String(i + 1), ...(mitNummer ? [p.nummer ?? ''] : []), p.name, menge(p.menge), p.einheit,
   ]);
 
   const fusszeile = (seite: number) => {
@@ -155,7 +158,7 @@ export function pdfErzeugen(
   let erste = true;
   kopf(true);
   autoTable(doc, {
-    head: [['Pos', 'Material', 'Menge', 'Einheit']],
+    head: [['Pos', ...(mitNummer ? ['Art.-Nr.'] : []), 'Material', 'Menge', 'Einheit']],
     body: zeilen,
     startY: kastenUnten + 6,
     margin: { top: 22, left: 15, right: 15, bottom: 20 },
@@ -165,12 +168,20 @@ export function pdfErzeugen(
     },
     headStyles: { fillColor: NAVY, textColor: [255, 255, 255], fontStyle: 'bold' },
     alternateRowStyles: { fillColor: [246, 248, 250] },
-    columnStyles: {
-      0: { cellWidth: 12, textColor: GRAU, halign: 'right' },
-      1: { cellWidth: 'auto' },
-      2: { cellWidth: 22, halign: 'right', fontStyle: 'bold' },
-      3: { cellWidth: 20, textColor: GRAU },
-    },
+    columnStyles: mitNummer
+      ? {
+          0: { cellWidth: 12, textColor: GRAU, halign: 'right' },
+          1: { cellWidth: 32, fontSize: 9 },
+          2: { cellWidth: 'auto' },
+          3: { cellWidth: 22, halign: 'right', fontStyle: 'bold' },
+          4: { cellWidth: 20, textColor: GRAU },
+        }
+      : {
+          0: { cellWidth: 12, textColor: GRAU, halign: 'right' },
+          1: { cellWidth: 'auto' },
+          2: { cellWidth: 22, halign: 'right', fontStyle: 'bold' },
+          3: { cellWidth: 20, textColor: GRAU },
+        },
     didDrawPage: (d: { pageNumber: number }) => {
       if (!erste) kopf(false);
       erste = false;
