@@ -345,7 +345,7 @@ function excelKarte(): HTMLElement {
 
   return h('div', { class: 'karte' },
     h('h2', { text: 'Archiv als Excel' }),
-    h('p', { text: 'Viele Artikel auf einmal: die Vorlage in Excel befüllen – Bezeichnung, Einheit und auf Wunsch Artikelnummer, Ordner, die Nummer unter dem Strichcode und wie das Etikett aussehen soll – und hier einlesen. Gelöscht wird dabei nichts.' }),
+    h('p', { text: 'Viele Artikel auf einmal: die Vorlage in Excel befüllen – Bezeichnung, Einheit und auf Wunsch Artikelnummer, Ordner, die Nummer unter dem Strichcode und wie das Etikett aussehen soll – und hier einlesen. Das ausgegebene Archiv lässt sich genauso bearbeiten und wieder einlesen. Gelöscht wird nur, was in der Liste unter „Löschen“ ein „Ja“ trägt.' }),
     h('div', { class: 'knopf-stapel' },
       h('button', {
         class: 'knopf zweit', type: 'button', text: 'Vorlage herunterladen',
@@ -591,7 +591,19 @@ async function excelEinlesen(modul: Promise<typeof import('../lib/archivliste')>
     const w = await vorschau(liste, eigene.checked);
     const paar = (k: string, v: number) =>
       h('div', { class: 'paar' }, h('span', { class: 'k', text: k }), h('span', { class: 'v', text: String(v) }));
+    // Was weg soll, steht namentlich da — bei einer Handvoll alle, sonst die ersten.
+    const ZEIGEN = 6;
+    const weg = w.geloescht;
     zahlen.replaceChildren(...[
+      weg.length
+        ? h('div', { class: 'merk warnung liste-hinweise' },
+            h('span', { text: '🗑️' }),
+            h('div', {},
+              h('div', { text: `${weg.length} ${weg.length === 1 ? 'Artikel wird' : 'Artikel werden'} aus dem Archiv gelöscht:` }),
+              h('div', { text: weg.slice(0, ZEIGEN).join(', ') + (weg.length > ZEIGEN ? ` … und ${weg.length - ZEIGEN} weitere` : '') }),
+            ),
+          )
+        : null,
       paar('Neue Artikel', w.neu),
       paar('Vorhandene, die sich ändern', w.geaendert),
       paar('Vorhandene, schon gleich', w.gleich),
@@ -626,7 +638,7 @@ async function excelEinlesen(modul: Promise<typeof import('../lib/archivliste')>
     'Excel-Liste einlesen',
     [
       h('p', { class: 'hinweis', style: 'padding:0',
-        text: `${liste.eintraege.length} Artikel in „${d.name}“. Gelöscht wird nichts; Codes kommen zu den vorhandenen dazu.` }),
+        text: `${liste.eintraege.length} Artikel in „${d.name}“. Gelöscht wird nur, was unter „Löschen“ ein „Ja“ trägt; Codes kommen zu den vorhandenen dazu.` }),
       zahlen,
       hinweise,
       h('label', { class: 'etikett-zeile' }, eigene,
@@ -643,6 +655,7 @@ async function excelEinlesen(modul: Promise<typeof import('../lib/archivliste')>
             w.neu ? `${w.neu} neu` : '',
             w.geaendert ? `${w.geaendert} ergänzt` : '',
             w.gleich ? `${w.gleich} schon gleich` : '',
+            w.geloescht.length ? `${w.geloescht.length} gelöscht` : '',
           ].filter(Boolean).join(', ');
           melden('Eingelesen', `${teile}.${w.eigene ? ` ${w.eigene} eigene Codes vergeben – Etiketten dazu druckt das Archiv.` : ''}`);
         },

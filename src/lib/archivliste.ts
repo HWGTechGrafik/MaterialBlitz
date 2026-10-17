@@ -13,9 +13,12 @@ import { csvLesen, istZip, xlsxDatei, xlsxLesen, type Auswahl, type Tabelle } fr
  * Anders als Schein-PDF und -Excel traegt diese Liste die Codes: sie ist ein
  * Pflegewerkzeug fuers Archiv, nichts, was zum Kunden geht.
  *
- * Einlesen kommt nur **dazu**, wie beim weitergegebenen Archiv: geloescht
- * wird nichts, Codes kommen zu den vorhandenen, Einheit, Ordner und
- * Artikelnummer der Liste gelten.
+ * Einlesen kommt **dazu**, wie beim weitergegebenen Archiv: Codes kommen zu
+ * den vorhandenen, Einheit, Ordner und Artikelnummer der Liste gelten.
+ * Weg kommt nur, was ausdruecklich dasteht — „Ohne Ordner" nimmt einen
+ * Artikel aus seinem Ordner, „Ja" unter „Löschen" nimmt ihn aus dem Archiv.
+ * Eine Zeile, die fehlt, loescht nichts: sonst raeumte die Liste vom
+ * Grosshaendler das halbe Archiv ab.
  */
 
 const BLATT = 'Artikel';
@@ -31,6 +34,7 @@ const SPALTEN: Tabelle['spalten'] = [
   { titel: 'Etikett', breite: 12 },
   { titel: 'Etikett-Inhalt', breite: 18 },
   { titel: 'Etiketten Stück', breite: 15, zahl: true },
+  { titel: 'Löschen', breite: 10 },
 ];
 
 const spalte = (titel: string) => SPALTEN.findIndex((s) => s.titel === titel);
@@ -39,11 +43,21 @@ const spalte = (titel: string) => SPALTEN.findIndex((s) => s.titel === titel);
 const ART_WORT: Record<EtikettArt, string> = { qr: 'QR', strich: 'Strichcode' };
 const INHALT_WORT: Record<EtikettCode, string> = { eigen: 'Eigener Code', nummer: 'Artikelnummer', name: 'Bezeichnung' };
 const WIE_EINGESTELLT = 'Wie eingestellt';
+/** In der Spalte Ordner: aus dem Ordner nehmen. Leer laesst ihn, wie er ist. */
+const OHNE_ORDNER = 'Ohne Ordner';
+const JA = 'Ja';
 
-function auswahlen(einheiten: string[]): Auswahl[] {
+function auswahlen(einheiten: string[], ordner: string[]): Auswahl[] {
+  // Excel nimmt hoechstens 255 Zeichen Auswahl — bei vielen Ordnern bleibt
+  // nur „Ohne Ordner", die Namen tippt man dann wie bisher.
+  const ordnerWerte = [OHNE_ORDNER, ...ordner];
   return [
     { spalte: spalte('Einheit'), werte: einheiten,
       titel: 'Einheit', hinweis: 'Diese Einheit kennt die App noch nicht. Sie wird beim Einlesen dazugenommen.' },
+    { spalte: spalte('Ordner'), werte: ordnerWerte.join(',').length > 250 ? [OHNE_ORDNER] : ordnerWerte,
+      titel: 'Ordner', hinweis: 'Diesen Ordner gibt es noch nicht. Er wird beim Einlesen angelegt.' },
+    { spalte: spalte('Löschen'), werte: [JA],
+      titel: 'Löschen', hinweis: 'Bitte „Ja“ zum Löschen – sonst bleibt der Artikel.' },
     { spalte: spalte('Etikett'), werte: Object.values(ART_WORT),
       titel: 'Etikett', hinweis: 'Bitte QR oder Strichcode – sonst bleibt es, wie es ist.' },
     { spalte: spalte('Etikett-Inhalt'), werte: [WIE_EINGESTELLT, ...Object.values(INHALT_WORT)],
@@ -59,7 +73,7 @@ const ANLEITUNG = [
   'Bezeichnung (Pflicht): so, wie sie auf dem Schein stehen soll, etwa „NYM-J 3x1,5“. Gibt es den Artikel im Archiv schon unter genau diesem Namen, wird er ergänzt statt doppelt angelegt.',
   'Artikelnummer (freiwillig): etwa die Nummer des Großhändlers oder aus der eigenen Warenwirtschaft. Sie steht beim Senden auf PDF und Excel des Materialscheins, so kann das Büro ohne Nachschlagen bestellen und verrechnen. Die Spalte ist als Text formatiert, führende Nullen bleiben. Leer heißt bei vorhandenen Artikeln: die Nummer bleibt, wie sie ist.',
   'Einheit: aus der Auswahl wählen. Eine Einheit, die die App noch nicht kennt, wird beim Einlesen dazugenommen. Leer heißt bei neuen Artikeln „Stk“, bei vorhandenen bleibt die bisherige.',
-  'Ordner (freiwillig): etwa „Kabel“, „Schaltermaterial“ oder „Loxone“. Im Archiv liegen die Artikel dann in diesen Ordnern, beim Aufschreiben findet man sie auch darüber. Ein neuer Name wird ein neuer Ordner; leer heißt bei vorhandenen Artikeln: der Ordner bleibt, wie er ist.',
+  'Ordner (freiwillig): etwa „Kabel“, „Schaltermaterial“ oder „Loxone“. Im Archiv liegen die Artikel dann in diesen Ordnern, beim Aufschreiben findet man sie auch darüber. Ein neuer Name wird ein neuer Ordner. „Ohne Ordner“ (in der Auswahl) nimmt den Artikel aus seinem Ordner; leer heißt bei vorhandenen Artikeln: der Ordner bleibt, wie er ist. Einen Ordner umbenennen: bei allen seinen Artikeln den neuen Namen eintragen.',
   'Codes (freiwillig): die Nummer unter dem Strichcode (EAN) oder ein eigener Code „MB-…“. Mehrere Codes mit Komma trennen. Die Spalte ist als Text formatiert – bitte so lassen, sonst macht Excel aus einer EAN „4,00638E+12“ und streicht führende Nullen.',
   '',
   'Etiketten (alles freiwillig)',
@@ -68,9 +82,13 @@ const ANLEITUNG = [
   'Etiketten Stück: wie viele Etiketten der Druck für diesen Artikel vorschlägt, etwa eines je Lagerfach. Leer heißt eines. Beim Drucken lässt sich die Zahl noch ändern.',
   'Leer heißt bei vorhandenen Artikeln in allen drei Spalten: es bleibt, wie es ist.',
   '',
+  'Löschen',
+  'Löschen: „Ja“ nimmt den Artikel samt seinen Codes aus dem Archiv. Die übrigen Spalten der Zeile zählen dann nicht. Leer heißt: der Artikel bleibt.',
+  'Eine Zeile einfach herauszulöschen, löscht den Artikel nicht – er bleibt im Archiv. So kann auch eine Teilliste oder die Liste vom Großhändler nichts abräumen.',
+  '',
   'Einlesen',
-  'Als .xlsx speichern (CSV geht auch) und in MaterialBlitz unter Einstellungen › Archiv › „Excel-Liste einlesen“ wählen. Vorher zeigt die App, was dazukommt und was sich ändert.',
-  'Gelöscht wird dabei nichts: Artikel, die nicht in der Liste stehen, bleiben. Codes kommen zu den vorhandenen dazu. Ein Code gehört genau einem Artikel – hing er bisher an einem anderen, wandert er herüber.',
+  'Als .xlsx speichern (CSV geht auch) und in MaterialBlitz unter Einstellungen › Archiv › „Excel-Liste einlesen“ wählen. Vorher zeigt die App, was dazukommt, was sich ändert und was gelöscht wird.',
+  'Artikel, die nicht in der Liste stehen, bleiben. Codes kommen zu den vorhandenen dazu. Ein Code gehört genau einem Artikel – hing er bisher an einem anderen, wandert er herüber.',
   'Weitere Spalten (Preis, Hersteller …) stören nicht, sie werden übergangen. Die Spalten werden auch erkannt, wenn sie „Artikel“, „Material“, „Art.-Nr.“, „EAN“ oder „Strichcode“ heißen – eine Liste vom Großhändler lässt sich oft direkt einlesen.',
   '',
   'Material ohne Strichcode',
@@ -90,8 +108,10 @@ function anleitung(): Tabelle {
 
 /** Leere Vorlage mit Auswahlliste der Einheiten und Anleitung. */
 export async function vorlageErzeugen(): Promise<File> {
-  const { einheiten } = await einstellungenLesen();
-  const artikel: Tabelle = { name: BLATT, spalten: SPALTEN, zeilen: [], kopf: true, auswahl: auswahlen(einheiten) };
+  const [{ einheiten }, alle] = await Promise.all([einstellungenLesen(), db.artikel.toArray()]);
+  const artikel: Tabelle = {
+    name: BLATT, spalten: SPALTEN, zeilen: [], kopf: true, auswahl: auswahlen(einheiten, ordnerListe(alle)),
+  };
   return xlsxDatei([artikel, anleitung()], 'MaterialBlitz_Archiv_Vorlage.xlsx');
 }
 
@@ -111,10 +131,10 @@ export async function archivAlsExcel(): Promise<File> {
     zeilen: alle.map((a) => [
       a.name, a.nummer ?? '', a.einheit, a.ordner ?? '', (a.codes ?? []).join(', '),
       ART_WORT[a.etikettArt ?? 'qr'], a.etikettInhalt ? INHALT_WORT[a.etikettInhalt] : WIE_EINGESTELLT,
-      String(a.etikettStueck ?? 1), String(a.anzahl),
+      String(a.etikettStueck ?? 1), '', String(a.anzahl),
     ]),
     kopf: true,
-    auswahl: auswahlen(einheiten),
+    auswahl: auswahlen(einheiten, ordnerListe(alle)),
   };
   return xlsxDatei([artikel, anleitung()], `MaterialBlitz_Archiv_${datumSortierbar(Date.now())}.xlsx`);
 }
@@ -125,8 +145,8 @@ export interface Eintrag {
   name: string;
   /** Fehlt, wenn die Zelle leer war — dann bleibt die bisherige Einheit. */
   einheit?: string;
-  /** Ebenso: leer laesst den bisherigen Ordner. */
-  ordner?: string;
+  /** Ebenso: leer laesst den bisherigen Ordner. null: „Ohne Ordner". */
+  ordner?: string | null;
   /** Ebenso: leer laesst die bisherige Artikelnummer. */
   nummer?: string;
   codes: string[];
@@ -136,6 +156,8 @@ export interface Eintrag {
   etikettInhalt?: EtikettCode | null;
   /** Fehlt: bleibt. 1 ist die Vorgabe. */
   etikettStueck?: number;
+  /** Aus dem Archiv nehmen — dann zaehlt sonst nichts aus der Zeile. */
+  loeschen?: true;
 }
 
 export interface Liste {
@@ -149,8 +171,10 @@ export interface Liste {
 }
 
 /** Kopfzeile erkennen — auch in Listen anderer Herkunft. */
-type Art = 'name' | 'nummer' | 'einheit' | 'ordner' | 'codes' | 'art' | 'inhalt' | 'stueck';
-const KEINE: Record<Art, number> = { name: -1, nummer: -1, einheit: -1, ordner: -1, codes: -1, art: -1, inhalt: -1, stueck: -1 };
+type Art = 'name' | 'nummer' | 'einheit' | 'ordner' | 'codes' | 'art' | 'inhalt' | 'stueck' | 'loeschen';
+const KEINE: Record<Art, number> = {
+  name: -1, nummer: -1, einheit: -1, ordner: -1, codes: -1, art: -1, inhalt: -1, stueck: -1, loeschen: -1,
+};
 
 /** Fuer Vergleiche: klein, ohne Leer- und Satzzeichen. */
 function wort(text: string): string {
@@ -163,6 +187,7 @@ function spaltenArt(titel: string): Art | null {
   if (['etikettinhalt', 'etiketteninhalt', 'codeinhalt', 'inhaltdescodes'].includes(t)) return 'inhalt';
   if (['etikettenstück', 'etikettenstueck', 'etikettstück', 'etikettstueck', 'etikettenanzahl',
     'anzahletiketten'].includes(t)) return 'stueck';
+  if (['löschen', 'loeschen', 'entfernen', 'artikellöschen', 'artikelloeschen'].includes(t)) return 'loeschen';
   // Vor dem Namen pruefen: "Artikelnummer" ist nicht "Artikel". Ein blosses
   // "Nr." bleibt aussen vor — oft ist das nur die laufende Zeilennummer.
   if (['artikelnummer', 'artikelnr', 'artnr', 'artikelno', 'nummer', 'materialnummer', 'materialnr',
@@ -215,6 +240,7 @@ export async function listeLesen(d: File): Promise<Liste | { fehler: string }> {
   const bekannt = new Map(einheiten.map((u) => [u.toLowerCase(), u]));
   const neueEinheiten: string[] = [];
   const ordnerBekannt = ordnerListe(bestand);
+  const bestandNamen = new Set(bestand.map((a) => a.name));
   const neueOrdner: string[] = [];
   const hinweise: string[] = [];
   const nachName = new Map<string, Eintrag>();
@@ -233,9 +259,34 @@ export async function listeLesen(d: File): Promise<Liste | { fehler: string }> {
     const artRoh = zelle(sp.art);
     const inhaltRoh = zelle(sp.inhalt);
     const stueckRoh = zelle(sp.stueck);
+    const loeschenRoh = zelle(sp.loeschen);
     if (!name) {
-      if (einheitRoh || codesRoh || ordnerRoh || nummer || artRoh || inhaltRoh || stueckRoh) hinweise.push(`Zeile ${nr}: keine Bezeichnung – übergangen.`);
+      if (einheitRoh || codesRoh || ordnerRoh || nummer || artRoh || inhaltRoh || stueckRoh || loeschenRoh) {
+        hinweise.push(`Zeile ${nr}: keine Bezeichnung – übergangen.`);
+      }
       continue;
+    }
+
+    // Loeschen zuerst: dann zaehlt der Rest der Zeile nicht, auch kein Code
+    // und keine neue Einheit.
+    if (loeschenRoh) {
+      const w = wort(loeschenRoh);
+      if (['ja', 'j', 'x', 'löschen', 'loeschen', 'weg', 'entfernen', 'yes', '1'].includes(w)) {
+        const da = nachName.get(name);
+        if (da) {
+          hinweise.push(`Zeile ${nr}: „${name}“ stand schon in Zeile ${zeileVonName.get(name)} – wird gelöscht.`);
+          da.loeschen = true;
+        } else if (!bestandNamen.has(name)) {
+          hinweise.push(`Zeile ${nr}: „${name}“ steht nicht im Archiv – nichts zu löschen.`);
+        } else {
+          nachName.set(name, { name, codes: [], loeschen: true });
+          zeileVonName.set(name, nr);
+        }
+        continue;
+      }
+      if (!['nein', 'n', '0', 'no'].includes(w)) {
+        hinweise.push(`Zeile ${nr}: Löschen „${loeschenRoh}“ unbekannt – bitte „Ja“ oder leer. Der Artikel bleibt.`);
+      }
     }
 
     let einheit: string | undefined;
@@ -249,7 +300,10 @@ export async function listeLesen(d: File): Promise<Liste | { fehler: string }> {
     }
 
     // Schreibweise angleichen: aus "kabel" in Zeile 40 wird kein zweiter Ordner.
-    const ordner = ordnerAngleichen(ordnerRoh, ordnerBekannt);
+    // Ein Strich oder „Ohne Ordner" nimmt den Artikel heraus.
+    const ohne = ['ohneordner', 'ohne', 'kein', 'keiner', 'keinordner'].includes(wort(ordnerRoh))
+      || /^[-–—]+$/.test(ordnerRoh);
+    const ordner = ohne ? null : ordnerAngleichen(ordnerRoh, ordnerBekannt);
     if (ordner && !ordnerBekannt.includes(ordner)) {
       ordnerBekannt.push(ordner);
       neueOrdner.push(ordner);
@@ -298,10 +352,14 @@ export async function listeLesen(d: File): Promise<Liste | { fehler: string }> {
     };
 
     const da = nachName.get(name);
+    if (da?.loeschen) {
+      hinweise.push(`Zeile ${nr}: „${name}“ wird laut Zeile ${zeileVonName.get(name)} gelöscht – hier übergangen.`);
+      continue;
+    }
     if (da) {
       hinweise.push(`Zeile ${nr}: „${name}“ stand schon in Zeile ${zeileVonName.get(name)} – zusammengefasst.`);
       if (einheit) da.einheit = einheit;
-      if (ordner) da.ordner = ordner;
+      if (ordner !== undefined) da.ordner = ordner;
       if (nummer) da.nummer = nummer;
       Object.assign(da, etikett);
       for (const c of codes) if (!da.codes.includes(c)) da.codes.push(c);
@@ -326,6 +384,8 @@ export interface Wirkung {
   gewandert: number;
   /** Neu vergebene eigene Codes. */
   eigene: number;
+  /** Bezeichnungen der Artikel, die aus dem Archiv kommen. */
+  geloescht: string[];
 }
 
 /**
@@ -340,9 +400,22 @@ function anwenden(liste: Liste, bestand: Artikel[], eigeneCodes: boolean) {
 
   const neue: Artikel[] = [];
   const veraendert = new Set<Artikel>();
-  const wirkung: Wirkung = { neu: 0, geaendert: 0, gleich: 0, gewandert: 0, eigene: 0 };
+  const weg: Artikel[] = [];
+  const wirkung: Wirkung = { neu: 0, geaendert: 0, gleich: 0, gewandert: 0, eigene: 0, geloescht: [] };
+
+  // Erst loeschen: ihre Codes werden frei, und ein Code, der zu einem
+  // anderen Artikel wandert, holt den geloeschten nicht als "veraendert" zurueck.
+  for (const e of liste.eintraege) {
+    const a = e.loeschen ? nachName.get(e.name) : undefined;
+    if (!a) continue;
+    nachName.delete(a.name);
+    for (const c of a.codes ?? []) nachCode.delete(c);
+    weg.push(a);
+    wirkung.geloescht.push(a.name);
+  }
 
   for (const e of liste.eintraege) {
+    if (e.loeschen) continue;
     let a = nachName.get(e.name);
     const warNeu = !a;
     if (!a) {
@@ -356,6 +429,7 @@ function anwenden(liste: Liste, bestand: Artikel[], eigeneCodes: boolean) {
     let anders = false;
     if (!warNeu && e.einheit && e.einheit !== a.einheit) { a.einheit = e.einheit; anders = true; }
     if (!warNeu && e.ordner && e.ordner !== a.ordner) { a.ordner = e.ordner; anders = true; }
+    if (!warNeu && e.ordner === null && a.ordner !== undefined) { delete a.ordner; anders = true; }
     if (!warNeu && e.nummer && e.nummer !== a.nummer) { a.nummer = e.nummer; anders = true; }
 
     // Etikett: die Vorgabe (QR, wie eingestellt, 1 Stueck) wird nicht
@@ -400,7 +474,7 @@ function anwenden(liste: Liste, bestand: Artikel[], eigeneCodes: boolean) {
     else if (anders) { veraendert.add(a); wirkung.geaendert++; }
     else wirkung.gleich++;
   }
-  return { neue, veraendert: [...veraendert], wirkung };
+  return { neue, veraendert: [...veraendert], weg, wirkung };
 }
 
 /** Was das Einlesen bewirken wuerde — ohne etwas zu schreiben. */
@@ -418,7 +492,8 @@ export async function listeEinspielen(liste: Liste, eigeneCodes: boolean): Promi
     const fehlend = liste.neueEinheiten.filter((u) => !e.einheiten.includes(u));
     if (fehlend.length) await einstellungenSchreiben({ einheiten: [...e.einheiten, ...fehlend] });
 
-    const { neue, veraendert, wirkung } = anwenden(liste, await db.artikel.toArray(), eigeneCodes);
+    const { neue, veraendert, weg, wirkung } = anwenden(liste, await db.artikel.toArray(), eigeneCodes);
+    if (weg.length) await db.artikel.bulkDelete(weg.map((a) => a.id!));
     if (veraendert.length) await db.artikel.bulkPut(veraendert);
     if (neue.length) {
       // Ohne Codes kein leeres Feld: so sehen sie aus wie von Hand angelegte.
