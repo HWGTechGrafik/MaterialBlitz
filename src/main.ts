@@ -19,6 +19,22 @@ const wurzel = document.getElementById('app')!;
 // Browser bleibt alles, wie es ist.
 if (AM_PC) document.documentElement.classList.add('am-pc');
 
+// Am iPhone verkleinert die Bildschirmtastatur die Seite nicht, sie legt
+// sich nur darueber. Blaetter von unten saessen dann dahinter. Deshalb wird
+// der sichtbare Ausschnitt nachgemessen, und die Blaetter halten sich daran
+// (styles.css, .schatten).
+const sicht = window.visualViewport;
+if (sicht) {
+  const messen = () => {
+    const wurzelStil = document.documentElement.style;
+    wurzelStil.setProperty('--sicht-hoehe', `${sicht.height}px`);
+    wurzelStil.setProperty('--sicht-oben', `${sicht.offsetTop}px`);
+  };
+  sicht.addEventListener('resize', messen);
+  sicht.addEventListener('scroll', messen);
+  messen();
+}
+
 // Sinnbilder statt Emoji: die zeichnet jedes Handy anders, und neben den
 // Strichzeichnungen im Kopf sahen sie wie aus einer anderen App aus.
 const REITER: Array<{ ansicht: Ansicht; sinnbild: IkonName; text: string }> = [

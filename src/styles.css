@@ -579,8 +579,12 @@ mark {
 
 /* ------------------------------------------------------------- Dialoge */
 
+/* Nur so hoch wie der sichtbare Ausschnitt: Bei offener Tastatur steht das
+   Blatt darueber statt dahinter (gemessen in main.ts). */
 .schatten {
-  position: fixed; inset: 0; z-index: 90;
+  position: fixed; left: 0; right: 0; z-index: 90;
+  top: var(--sicht-oben, 0px);
+  height: var(--sicht-hoehe, 100%);
   background: rgba(8, 16, 28, 0.55);
   display: flex; align-items: flex-end; justify-content: center;
   padding: 0;
@@ -592,7 +596,15 @@ mark {
   border-radius: 14px 14px 0 0;
   padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px));
   display: flex; flex-direction: column; gap: 12px;
-  max-height: 90vh; overflow-y: auto;
+  max-height: min(90vh, calc(100% - 16px)); overflow-y: auto;
+}
+/* Wird es eng (Tastatur offen), rollt das Blatt — nichts darin wird gestaucht. */
+.blatt > * { flex-shrink: 0; }
+/* Suchfeld im Ordner-Dialog: bleibt oben stehen, wenn das Blatt rollt. */
+.blatt .ordner-suche {
+  position: sticky; top: -18px; z-index: 1;
+  margin: -6px -16px 0; padding: 6px 16px 0;
+  background: var(--surface);
 }
 @media (min-width: 560px) { .blatt { border-radius: 14px; } }
 .blatt h2 { margin: 0; font-size: 19px; }

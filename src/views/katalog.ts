@@ -184,7 +184,11 @@ async function ordnerBearbeiten(alt?: string): Promise<void> {
       // Wie die Suche sonst: Umlaute und Grossschreibung egal, auch die Artikelnummer.
       return { a, an, el, text: suchNorm(`${a.name} ${a.nummer ?? ''}`) };
     });
+  const liste = h('div', { class: 'etiketten-liste' }, ...zeilen.map((z) => z.el));
   filter.addEventListener('input', () => {
+    // Die Liste behaelt ihre Hoehe: Wuerde sie beim Filtern schrumpfen,
+    // sackte das Blatt nach unten und das Suchfeld unter die Tastatur.
+    if (!liste.style.minHeight) liste.style.minHeight = `${liste.offsetHeight}px`;
     const begriffe = suchBegriffe(filter.value);
     for (const z of zeilen) z.el.hidden = !begriffe.every((b) => z.text.includes(b));
   });
@@ -226,11 +230,11 @@ async function ordnerBearbeiten(alt?: string): Promise<void> {
     alt === undefined ? 'Neuer Ordner' : 'Ordner bearbeiten',
     [
       h('label', { class: 'feld' }, h('span', { text: 'Name' }), name),
-      h('div', { class: 'feld', style: 'margin:0' },
+      h('div', { class: 'feld ordner-suche' },
         h('span', { text: 'Artikel in diesem Ordner' }),
         h('label', { class: 'feld', style: 'margin-bottom:6px' }, filter),
       ),
-      h('div', { class: 'etiketten-liste' }, ...zeilen.map((z) => z.el)),
+      liste,
       h('p', { class: 'hinweis', style: 'padding:0',
         text: 'Ein Artikel liegt in höchstens einem Ordner – steht rechts schon einer, wird er verschoben.' }),
     ],
