@@ -401,19 +401,44 @@ export async function sicherungEinspielen(
       await db.verlauf.add(neuer);
     }
 
-    // Eigene Etikettengroessen beider Geraete zusammen — sonst waere die am
-    // PC angelegte nach dem Zusammenfuehren mit dem Handy verschwunden. Die
-    // eigene Wahl geht vor; fehlt sie, gilt die aus der Sicherung.
-    const eigene = await einstellungenLesen();
-    const boegen = [...(eigene.etikettBoegen ?? [])];
-    for (const b of s.einstellungen.etikettBoegen ?? []) if (!boegen.some((x) => x.id === b.id)) boegen.push(b);
-    await einstellungenSchreiben({
-      ...(boegen.length ? { etikettBoegen: boegen } : {}),
-      etikettCode: eigene.etikettCode ?? s.einstellungen.etikettCode,
-      etikettBogen: eigene.etikettBogen ?? s.einstellungen.etikettBogen,
-    });
+    if (s.einstellungen) await einstellungenSchreiben(einstellungenVereinen(await einstellungenLesen(), s.einstellungen));
   });
   await einstellungenSchreiben({ letzteSicherung: Date.now(), neueArtikel: 0 });
+}
+
+/**
+ * Die Einstellungen beim Zusammenfuehren. Frueher blieben sie ganz aussen
+ * vor: Firmenkopf, Logo und eigene Etikettengroessen vom anderen Geraet
+ * gingen verloren, und das Zusammengefuehrte wurde ohne sie wieder in die
+ * Dropbox geschrieben.
+ *
+ * Die Regel ist dieselbe wie bei den Artikeln: was hier schon gesetzt ist,
+ * gilt; was fehlt, kommt aus der Sicherung. Listen werden vereint. Lizenz
+ * und Sicherungsstand gehoeren zum Geraet und bleiben unberuehrt.
+ */
+export function einstellungenVereinen(hier: Einstellungen, dort: Partial<Einstellungen>): Partial<Einstellungen> {
+  const feld = (wert: string | undefined, sonst: string | undefined) => (wert?.trim() ? wert : sonst?.trim() ? sonst : wert);
+  const f = dort.firma;
+  const einheiten = [...hier.einheiten];
+  for (const u of dort.einheiten ?? []) if (!einheiten.includes(u)) einheiten.push(u);
+  const boegen = [...(hier.etikettBoegen ?? [])];
+  for (const b of dort.etikettBoegen ?? []) if (!boegen.some((x) => x.id === b.id)) boegen.push(b);
+  return {
+    // Feld fuer Feld: hier nur der Name, dort die Anschrift — dann beides.
+    firma: {
+      name: feld(hier.firma.name, f?.name) ?? '',
+      strasse: feld(hier.firma.strasse, f?.strasse) ?? '',
+      ort: feld(hier.firma.ort, f?.ort) ?? '',
+      telefon: feld(hier.firma.telefon, f?.telefon) ?? '',
+    },
+    logo: hier.logo ?? dort.logo,
+    einheiten,
+    ausweis: hier.ausweis ?? dort.ausweis,
+    buero: feld(hier.buero, dort.buero),
+    etikettCode: hier.etikettCode ?? dort.etikettCode,
+    etikettBogen: hier.etikettBogen ?? dort.etikettBogen,
+    ...(boegen.length ? { etikettBoegen: boegen } : {}),
+  };
 }
 
 /**
