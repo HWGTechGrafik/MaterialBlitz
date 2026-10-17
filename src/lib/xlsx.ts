@@ -26,8 +26,8 @@ export interface Tabelle {
   name: string;
   spalten: Spalte[];
   zeilen: string[][];
-  /** Auswahlliste in Excel; andere Werte bleiben mit einem Hinweis erlaubt. */
-  auswahl?: { spalte: number; werte: string[] };
+  /** Auswahllisten in Excel; andere Werte bleiben mit einem Hinweis erlaubt. */
+  auswahl?: Auswahl[];
   /** Kopfzeile fett, festgehalten und mit Filter. */
   kopf?: boolean;
   /** Lange Texte umbrechen (fuer die Anleitung). */
@@ -39,6 +39,14 @@ export interface Tabelle {
   vorspann?: Vorspann[];
   /** Bild links oben in der ersten Zeile, etwa das Firmenlogo. */
   bild?: Bild;
+}
+
+export interface Auswahl {
+  spalte: number;
+  werte: string[];
+  /** Was Excel bei einem anderen Wert sagt — er bleibt trotzdem stehen. */
+  titel: string;
+  hinweis: string;
 }
 
 export interface Vorspann {
@@ -160,17 +168,16 @@ function blattXml(t: Tabelle, mitBild: boolean): string {
 
   // Eine Liste in der Formel darf hoechstens 255 Zeichen haben und kein
   // Komma enthalten — sonst lieber keine Auswahl als eine kaputte Datei.
-  let pruefung = '';
-  if (t.auswahl) {
-    const werte = t.auswahl.werte.filter((w) => !/[,"]/.test(w));
+  const regeln = (t.auswahl ?? []).flatMap((a) => {
+    const werte = a.werte.filter((w) => !/[,"]/.test(w));
     const liste = werte.join(',');
-    if (werte.length && liste.length <= 250) {
-      const sp = spaltenName(t.auswahl.spalte);
-      pruefung = `<dataValidations count="1"><dataValidation type="list" errorStyle="information" allowBlank="1" showInputMessage="1" showErrorMessage="1"`
-        + ` errorTitle="Einheit" error="Diese Einheit kennt die App noch nicht. Sie wird beim Einlesen dazugenommen."`
-        + ` sqref="${sp}2:${sp}5000"><formula1>"${xml(liste)}"</formula1></dataValidation></dataValidations>`;
-    }
-  }
+    if (!werte.length || liste.length > 250) return [];
+    const sp = spaltenName(a.spalte);
+    return [`<dataValidation type="list" errorStyle="information" allowBlank="1" showInputMessage="1" showErrorMessage="1"`
+      + ` errorTitle="${xml(a.titel)}" error="${xml(a.hinweis)}"`
+      + ` sqref="${sp}2:${sp}5000"><formula1>"${xml(liste)}"</formula1></dataValidation>`];
+  });
+  const pruefung = regeln.length ? `<dataValidations count="${regeln.length}">${regeln.join('')}</dataValidations>` : '';
 
   // Mit Briefkopf ist es ein Schein, der auch ausgedruckt wird: quer und
   // auf eine Seite Breite, sonst landen die hinteren Spalten auf Blatt zwei.

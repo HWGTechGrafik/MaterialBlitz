@@ -478,7 +478,7 @@ mark {
 }
 .etikett-schnell select + select { margin-left: 0; }
 .etiketten-liste { max-height: 40vh; overflow-y: auto; border-top: 1px solid var(--line); }
-.etikett-zeile { display: flex; align-items: center; gap: 12px; min-height: 50px; border-bottom: 1px solid var(--line); }
+.etikett-zeile { display: flex; align-items: center; gap: 8px; min-height: 50px; border-bottom: 1px solid var(--line); }
 .etikett-zeile input { width: 22px; height: 22px; flex: none; accent-color: var(--ader); }
 .etikett-zeile .nm { flex: 1; min-width: 0; }
 .etikett-zeile select {
@@ -487,6 +487,23 @@ mark {
   background: var(--ground); color: var(--ink); font: inherit; font-size: 15px;
 }
 .etikett-zeile .wo { flex: none; font-size: 13px; color: var(--ink-muted); }
+/* Etikett im Artikel: Codeart, Inhalt, Stueck in einer Zeile. */
+.etikett-wahl { display: flex; gap: 6px; margin-top: 10px; }
+.etikett-wahl select, .etikett-wahl .feld { flex: 1; min-width: 0; }
+/* QR/Strichcode braucht weniger Platz als der Inhalt daneben. */
+.etikett-wahl select:first-child { flex: 0 1 118px; }
+.etikett-wahl .feld { margin-top: 0; }
+.feld-hinweis.falsch { color: var(--warn); }
+.etikett-wahl input.stueck {
+  flex: none; width: 60px; text-align: right;
+}
+
+/* Stueckzahl je Artikel: schmal, die Zeile soll am Handy nicht umbrechen. */
+.etikett-zeile input.stueck {
+  width: 52px; height: 38px; padding: 0 6px; text-align: right; accent-color: auto;
+  border: 1px solid var(--line); border-radius: var(--r);
+  background: var(--ground); color: var(--ink); font: inherit; font-size: 15px;
+}
 
 /* ------------------------------------------------------------- Verlauf */
 

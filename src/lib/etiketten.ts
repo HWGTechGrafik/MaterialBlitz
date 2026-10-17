@@ -1,142 +1,178 @@
 import { jsPDF } from 'jspdf';
 import qrcode from 'qrcode-generator';
 import { code128 } from './code128';
-import { qrInhalt } from './codes';
 import { datumSortierbar } from './format';
 
-export type EtikettArt = 'qr' | 'strich';
+import type { EtikettArt, EtikettBogen } from '../model';
+import { innenrand, qrSeite, raster } from './boegen';
+
+export type { EtikettArt };
 
 export interface Etikett {
   name: string;
   einheit: string;
-  /** Immer der eigene Code des Artikels ("MB-..."), nie eine fremde EAN. */
-  code: string;
+  /**
+   * Was der Code traegt: beim eigenen Code `MB1|...` (QR) bzw. "MB-..."
+   * (Strichcode), sonst schlicht Artikelnummer oder Bezeichnung. Nie eine
+   * fremde EAN — die klebt ohnehin schon am Material.
+   */
+  inhalt: string;
+  /** Klarschrift unter dem Code; leer, wenn sie nur den Namen wiederholte. */
+  klartext: string;
   art: EtikettArt;
 }
-
-/** Ein Blatt voller Etiketten. Alle Masse in Millimetern. */
-export interface Bogen {
-  id: string;
-  titel: string;
-  spalten: number;
-  zeilen: number;
-  breite: number;
-  hoehe: number;
-  /** Lage der linken oberen Ecke des ersten Etiketts auf dem Blatt. */
-  links: number;
-  oben: number;
-  /**
-   * Innenrand. Drucker schaffen den Blattrand nicht, und ein Code braucht
-   * rundum etwas Weiss (Ruhezone), sonst liest ihn keine Kamera.
-   */
-  rand: number;
-  /** Normales Papier: duenne Linien zum Ausschneiden. */
-  schnitt: boolean;
-}
-
-/**
- * Ein weiterer Bogen ist eine Zeile hier. Der Etikettenbogen ist ein
- * verbreitetes Format (etwa Avery Zweckform 3474), bis feststeht, welches der
- * Betrieb verwendet. Titel kurz halten: am Handy schneidet die Auswahl ab.
- */
-export const BOEGEN: Bogen[] = [
-  {
-    id: 'z3474', titel: 'Etikettenbogen 70 × 37 mm (24)',
-    spalten: 3, zeilen: 8, breite: 70, hoehe: 37, links: 0, oben: 0.5, rand: 4, schnitt: false,
-  },
-  {
-    id: 'a4', titel: 'Normales A4, 90 × 45 mm (12)',
-    spalten: 2, zeilen: 6, breite: 90, hoehe: 45, links: 15, oben: 13.5, rand: 5, schnitt: true,
-  },
-];
 
 const SCHWARZ: [number, number, number] = [0, 0, 0];
 const GRAU: [number, number, number] = [110, 120, 130];
 const LINIE: [number, number, number] = [190, 196, 204];
 
+function neuesBlatt(bogen: EtikettBogen): jsPDF {
+  // Quer schon im PDF: dreht erst der Druckdialog, verkleinert er dabei,
+  // und nichts sitzt mehr auf dem Bogen.
+  return new jsPDF({ unit: 'mm', format: 'a4', orientation: bogen.quer ? 'landscape' : 'portrait', compress: true });
+}
+
 /**
  * Etiketten als PDF. `erstesFreies` zaehlt ab 1 und erlaubt, einen
- * angebrochenen Bogen weiterzuverwenden.
+ * angebrochenen Bogen weiterzuverwenden. Mehrere Stueck eines Artikels
+ * stehen einfach mehrfach in `etiketten`.
  */
-export function etikettenPdf(etiketten: Etikett[], bogen: Bogen, erstesFreies = 1): File {
-  const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
-  const jeSeite = bogen.spalten * bogen.zeilen;
-  let platz = Math.min(Math.max(Math.round(erstesFreies), 1), jeSeite) - 1;
+export function etikettenPdf(etiketten: Etikett[], bogen: EtikettBogen, erstesFreies = 1): File {
+  const doc = neuesBlatt(bogen);
+  const r = raster(bogen);
+  let platz = Math.min(Math.max(Math.round(erstesFreies), 1), r.jeBlatt) - 1;
 
   if (bogen.schnitt) schnittlinien(doc, bogen);
   for (const e of etiketten) {
-    if (platz >= jeSeite) {
-      doc.addPage();
+    if (platz >= r.jeBlatt) {
+      doc.addPage('a4', bogen.quer ? 'landscape' : 'portrait');
       if (bogen.schnitt) schnittlinien(doc, bogen);
       platz = 0;
     }
-    const x = bogen.links + (platz % bogen.spalten) * bogen.breite;
-    const y = bogen.oben + Math.floor(platz / bogen.spalten) * bogen.hoehe;
+    const x = r.links + (platz % r.spalten) * r.schrittX;
+    const y = r.oben + Math.floor(platz / r.spalten) * r.schrittY;
     if (e.art === 'qr') qrEtikett(doc, e, x, y, bogen);
     else strichEtikett(doc, e, x, y, bogen);
     platz++;
   }
 
-  const blob = doc.output('blob');
-  return new File([blob], `MaterialBlitz_Etiketten_${datumSortierbar(Date.now())}.pdf`, {
+  return new File([doc.output('blob')], `MaterialBlitz_Etiketten_${datumSortierbar(Date.now())}.pdf`, {
     type: 'application/pdf',
   });
 }
 
-// ------------------------------------------------------------- Etiketten
-
-/** QR links, so hoch wie das Etikett; daneben Name, Einheit und Code. */
-function qrEtikett(doc: jsPDF, e: Etikett, x: number, y: number, b: Bogen): void {
-  const s = b.hoehe - 2 * b.rand;
-  qrZeichnen(doc, qrInhalt(e.code, e.name, e.einheit), x + b.rand, y + b.rand, s);
-
-  const tx = x + b.rand + s + 3;
-  const tb = x + b.breite - b.rand - tx;
-  const unten = y + b.hoehe - b.rand;
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.setTextColor(...SCHWARZ);
-  const zeilen = zeilenKuerzen(doc, e.name, tb, 4);
-  doc.text(zeilen, tx, y + b.rand, { baseline: 'top' });
-
+/**
+ * Nur die Umrisse, nummeriert — auf Normalpapier drucken und gegen den
+ * Etikettenbogen ins Licht halten. So zeigt sich ein Versatz, bevor ein
+ * teurer Bogen verdruckt ist.
+ */
+export function probeblattPdf(bogen: EtikettBogen): File {
+  const doc = neuesBlatt(bogen);
+  const r = raster(bogen);
+  doc.setDrawColor(...SCHWARZ);
+  doc.setLineWidth(0.15);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
   doc.setTextColor(...GRAU);
-  doc.text(e.einheit, tx, y + b.rand + zeilen.length * zeilenHoehe(9) + 1, { baseline: 'top' });
-  doc.setFontSize(7);
-  doc.text(e.code, tx, unten, { baseline: 'bottom' });
+  doc.setFontSize(Math.min(14, Math.max(5, bogen.hoehe * 0.3)));
+  for (let i = 0; i < r.jeBlatt; i++) {
+    const x = r.links + (i % r.spalten) * r.schrittX;
+    const y = r.oben + Math.floor(i / r.spalten) * r.schrittY;
+    doc.rect(x, y, bogen.breite, bogen.hoehe);
+    doc.text(String(i + 1), x + bogen.breite / 2, y + bogen.hoehe / 2, { align: 'center', baseline: 'middle' });
+  }
+  const name = bogen.titel.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '');
+  return new File([doc.output('blob')], `MaterialBlitz_Probeblatt_${name}.pdf`, { type: 'application/pdf' });
 }
 
-/** Name oben, darunter der Strichcode ueber die ganze Breite, darunter der Code in Klarschrift. */
-function strichEtikett(doc: jsPDF, e: Etikett, x: number, y: number, b: Bogen): void {
-  const innen = b.breite - 2 * b.rand;
-  const unten = y + b.hoehe - b.rand;
+// ------------------------------------------------------------- Etiketten
+
+/**
+ * Schrift waechst und schrumpft mit dem Etikett. 1 entspricht 37 mm Hoehe,
+ * dem Format, fuer das die Groessen einst gewaehlt wurden. Nach unten
+ * begrenzt: unter 5 pt liest es niemand mehr.
+ */
+function skala(b: EtikettBogen): number {
+  return Math.min(1.6, Math.max(0.5, b.hoehe / 37));
+}
+
+/** QR links, so hoch wie das Etikett; daneben Name, Einheit und Klarschrift. */
+function qrEtikett(doc: jsPDF, e: Etikett, x: number, y: number, b: EtikettBogen): void {
+  const r = innenrand(b);
+  const s = qrSeite(b);
+  const oben = y + (b.hoehe - s) / 2;
+  const unten = oben + s;
+  qrZeichnen(doc, e.inhalt, x + r, oben, s);
+
+  const tx = x + r + s + Math.max(1.5, r * 0.75);
+  const tb = x + b.breite - r - tx;
+  if (tb < 4) return; // Fuer Text bleibt kein Platz — der Code genuegt.
+  const k = skala(b);
+  const pName = Math.max(5, 9 * k);
+  const pEinheit = Math.max(4.5, 8 * k);
+  const pKlar = Math.max(4.5, 7 * k);
+  const klarH = e.klartext ? zeilenHoehe(pKlar) : 0;
+  const einheitH = zeilenHoehe(pEinheit) + 0.5;
+
+  // Der Name bekommt, was nach Einheit und Klarschrift bleibt — mindestens eine Zeile.
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(pName);
+  doc.setTextColor(...SCHWARZ);
+  const maxZeilen = Math.max(1, Math.min(4, Math.floor((s - klarH - einheitH) / zeilenHoehe(pName))));
+  const zeilen = zeilenKuerzen(doc, e.name, tb, maxZeilen);
+  doc.text(zeilen, tx, oben, { baseline: 'top' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(...GRAU);
+  const einheitY = oben + zeilen.length * zeilenHoehe(pName) + 0.5;
+  if (einheitY + zeilenHoehe(pEinheit) <= unten - klarH) {
+    doc.setFontSize(pEinheit);
+    doc.text(e.einheit, tx, einheitY, { baseline: 'top' });
+  }
+  if (e.klartext) {
+    doc.setFontSize(pKlar);
+    doc.text(zeilenKuerzen(doc, e.klartext, tb, 1), tx, unten, { baseline: 'bottom' });
+  }
+}
+
+/** Name oben, darunter der Strichcode ueber die ganze Breite, darunter die Klarschrift. */
+function strichEtikett(doc: jsPDF, e: Etikett, x: number, y: number, b: EtikettBogen): void {
+  const r = innenrand(b);
+  const k = skala(b);
+  const innen = b.breite - 2 * r;
+  const oben = y + r;
+  const unten = y + b.hoehe - r;
+  const pName = Math.max(5, 9 * k);
+  const pKlar = Math.max(4.5, 8 * k);
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
+  doc.setFontSize(pName);
   doc.setTextColor(...SCHWARZ);
-  const zeilen = zeilenKuerzen(doc, e.name, innen, 2);
-  doc.text(zeilen, x + b.rand, y + b.rand, { baseline: 'top' });
+  const zeilen = zeilenKuerzen(doc, e.name, innen, b.hoehe >= 30 ? 2 : 1);
+  doc.text(zeilen, x + r, oben, { baseline: 'top' });
 
-  const breiten = code128(e.code);
+  const breiten = code128(e.inhalt);
   // Zehn Module Ruhezone links und rechts gehoeren zur Breite dazu.
-  const module = breiten.reduce((s, w) => s + w, 0) + 20;
+  const module = breiten.reduce((sum, w) => sum + w, 0) + 20;
   // Hoechstens 0,5 mm je Modul: breiter liest sich nicht besser, nur schlechter zielen.
   const m = Math.min(0.5, innen / module);
-  const oben = y + b.rand + zeilen.length * zeilenHoehe(9) + 1.5;
-  const hoehe = unten - 3.2 - oben;
+  const klarH = e.klartext ? zeilenHoehe(pKlar) + 0.5 : 0;
+  const barOben = oben + zeilen.length * zeilenHoehe(pName) + 1.5 * k;
+  // Auf grossen Etiketten nicht ueber die ganze Hoehe — 25 mm Striche
+  // liest jede Kamera, hoeher sieht nur seltsam aus.
+  const hoehe = Math.min(unten - klarH - barOben, 25 * k);
   let bx = x + (b.breite - module * m) / 2 + 10 * m;
   doc.setFillColor(...SCHWARZ);
   breiten.forEach((w, i) => {
-    if (i % 2 === 0) doc.rect(bx, oben, w * m, hoehe, 'F');
+    if (i % 2 === 0) doc.rect(bx, barOben, w * m, hoehe, 'F');
     bx += w * m;
   });
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(...GRAU);
-  doc.text(e.code, x + b.breite / 2, unten, { align: 'center', baseline: 'bottom' });
+  if (e.klartext) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(pKlar);
+    doc.setTextColor(...GRAU);
+    doc.text(e.klartext, x + b.breite / 2, barOben + hoehe + 0.5, { align: 'center', baseline: 'top' });
+  }
 }
 
 function qrZeichnen(doc: jsPDF, inhalt: string, x: number, y: number, seite: number): void {
@@ -162,13 +198,15 @@ function qrZeichnen(doc: jsPDF, inhalt: string, x: number, y: number, seite: num
   }
 }
 
-function schnittlinien(doc: jsPDF, b: Bogen): void {
-  const rechts = b.links + b.spalten * b.breite;
-  const unten = b.oben + b.zeilen * b.hoehe;
+function schnittlinien(doc: jsPDF, b: EtikettBogen): void {
+  const r = raster(b);
   doc.setDrawColor(...LINIE);
   doc.setLineWidth(0.1);
-  for (let z = 0; z <= b.zeilen; z++) doc.line(b.links, b.oben + z * b.hoehe, rechts, b.oben + z * b.hoehe);
-  for (let s = 0; s <= b.spalten; s++) doc.line(b.links + s * b.breite, b.oben, b.links + s * b.breite, unten);
+  // Je Etikett ein Rahmen: mit Luecken zwischen den Etiketten stimmt ein
+  // durchgehendes Gitter nicht.
+  for (let i = 0; i < r.jeBlatt; i++) {
+    doc.rect(r.links + (i % r.spalten) * r.schrittX, r.oben + Math.floor(i / r.spalten) * r.schrittY, b.breite, b.hoehe);
+  }
 }
 
 // ------------------------------------------------------------------ Text

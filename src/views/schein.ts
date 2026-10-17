@@ -1,5 +1,5 @@
 import {
-  artikelMitCode, artikelVerwenden, db, einstellungenLesen, kacheln, offenerSchein,
+  artikelMitCode, artikelMitText, artikelVerwenden, db, einstellungenLesen, kacheln, offenerSchein,
   scheineDerBaustelle, speicherSichern, suchen, verwendungHier,
 } from '../db';
 import { ordnerListe } from '../lib/ordner';
@@ -450,6 +450,8 @@ async function scannenUndWaehlen(baustelle: Baustelle): Promise<void> {
   const etikett = qrLesen(text);
   const code = etikett ? etikett.code : codeNormalisieren(text);
   let artikel = await artikelMitCode(code);
+  // Etikett mit Artikelnummer oder Bezeichnung statt eigenem Code.
+  if (!artikel && !etikett) artikel = await artikelMitText(text);
 
   // Etikett eines Kollegen: der Code ist hier neu, Name und Einheit reisen
   // aber mit. Ueber den Namen finden oder anlegen, den Code dranhaengen.

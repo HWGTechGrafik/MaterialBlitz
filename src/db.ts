@@ -153,6 +153,19 @@ export async function artikelMitCode(code: string): Promise<Artikel | undefined>
 }
 
 /**
+ * Ein Etikett, das statt eines Codes die Artikelnummer oder die Bezeichnung
+ * traegt (Einstellung "Code auf Etiketten"). Gesucht wird unabhaengig von der
+ * aktuellen Wahl — Etiketten von frueher bleiben lesbar.
+ */
+export async function artikelMitText(text: string): Promise<Artikel | undefined> {
+  const t = codeNormalisieren(text);
+  if (!t) return undefined;
+  const alle = await db.artikel.toArray();
+  return alle.find((a) => a.nummer && codeNormalisieren(a.nummer) === t)
+    ?? alle.find((a) => codeNormalisieren(a.name) === t);
+}
+
+/**
  * Vorschlaege ab zwei Buchstaben, hier Verwendetes zuerst. Ein abgetippter
  * Code, der genau passt, steht vor allem anderen.
  */

@@ -1,6 +1,8 @@
-import { artikelMitCode, db, einstellungenLesen } from '../db';
-import { projektTitel, projektUnter, type Artikel } from '../model';
-import { codeArt, codePruefen, eigenerCode, istEigenerCode } from '../lib/codes';
+import { artikelMitCode, db, einstellungenLesen, einstellungenSchreiben } from '../db';
+import { projektTitel, projektUnter, type Artikel, type EtikettArt, type EtikettCode } from '../model';
+import { alleBoegen, bogenFinden, raster, rasterText, strichcodeMoeglich } from '../lib/boegen';
+import { codeArt, codePruefen, eigenerCode, istEigenerCode, qrInhalt } from '../lib/codes';
+import type { Etikett } from '../lib/etiketten';
 import { teilen } from '../lib/share';
 import { AM_PC, NICHT_MOEGLICH } from '../lib/geraet';
 import { neu } from '../store';
@@ -269,6 +271,21 @@ export async function artikelBearbeiten(id?: number, oben?: HTMLElement, ordnerV
   });
   nummer.spellcheck = false;
 
+  // Etikett: leer gelassen gilt die Vorgabe (QR, Inhalt wie eingestellt, 1 Stueck).
+  const etikettArt = h('select', { 'aria-label': 'Codeart' },
+    h('option', { value: 'qr', text: 'QR' }),
+    h('option', { value: 'strich', text: 'Strichcode', selected: vorhanden?.etikettArt === 'strich' }),
+  );
+  const etikettInhalt = h('select', { 'aria-label': 'Inhalt des Codes' },
+    h('option', { value: '', text: 'Inhalt wie eingestellt' }),
+    ...(Object.entries(INHALT_WAHL) as Array<[EtikettCode, string]>).map(([wert, text]) =>
+      h('option', { value: wert, text, selected: vorhanden?.etikettInhalt === wert })),
+  );
+  const etikettStueck = h('input', {
+    type: 'number', class: 'stueck', min: '1', max: '999', inputMode: 'numeric',
+    value: String(vorhanden?.etikettStueck ?? 1), 'aria-label': 'Stück je Druck',
+  });
+
   // Auswahl statt Freitext: mit Handschuhen vertippt man sich leicht, und
   // aus "Kabel" und "Kabl" wuerden zwei Ordner.
   const vorhandeneOrdner = ordnerListe(alle);
@@ -365,13 +382,20 @@ export async function artikelBearbeiten(id?: number, oben?: HTMLElement, ordnerV
       }
       const ordner = ordnerGewaehlt();
       const nr = nummer.value.trim() || undefined;
+      const stueck = stueckVon(etikettStueck.value);
+      const etikett = {
+        etikettArt: etikettArt.value === 'strich' ? 'strich' as const : undefined,
+        etikettInhalt: (etikettInhalt.value || undefined) as EtikettCode | undefined,
+        etikettStueck: stueck > 1 ? stueck : undefined,
+      };
       if (vorhanden) {
-        await db.artikel.update(vorhanden.id!, { name: n, einheit: einheit.value, codes, ordner, nummer: nr });
+        await db.artikel.update(vorhanden.id!, { name: n, einheit: einheit.value, codes, ordner, nummer: nr, ...etikett });
         return vorhanden.id!;
       }
-      return (await db.artikel.add({
-        name: n, einheit: einheit.value, anzahl: 0, codes, ...(ordner ? { ordner } : {}), ...(nr ? { nummer: nr } : {}),
-      })) ?? null;
+      // Leere Felder gar nicht erst anlegen: so sieht der Artikel aus wie bisher.
+      const neuer: Artikel = { name: n, einheit: einheit.value, anzahl: 0, codes, ordner, nummer: nr, ...etikett };
+      for (const f of Object.keys(neuer) as Array<keyof Artikel>) if (neuer[f] === undefined) delete neuer[f];
+      return (await db.artikel.add(neuer)) ?? null;
     });
   };
 
@@ -395,6 +419,8 @@ export async function artikelBearbeiten(id?: number, oben?: HTMLElement, ordnerV
           h('button', { class: 'knopf zweit', type: 'button', text: 'Hinzufügen', onclick: () => void uebernehmen() }),
         ),
         hinweis,
+        h('div', { class: 'etikett-wahl' }, etikettArt, etikettInhalt, etikettStueck),
+        h('small', { class: 'feld-hinweis', text: 'Etikett: Codeart, was der Code trägt, und wie viele der Druck vorschlägt.' }),
         h('div', { class: 'code-taten' },
           eigenerKnopf,
           h('button', {
@@ -429,12 +455,29 @@ export async function artikelBearbeiten(id?: number, oben?: HTMLElement, ordnerV
 
 // -------------------------------------------------------------- Etiketten
 
-/** Zuletzt gewaehlter Bogen - fuer die Dauer der Sitzung. */
-let bogenWahl = 'z3474';
+/** Stueckzahl aus dem Feld: leer oder Unsinn heisst 1, mehr als 999 druckt niemand. */
+function stueckVon(wert: string): number {
+  const n = Math.round(Number(wert.replace(',', '.')));
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, 999) : 1;
+}
+
+/** Fuer Auswahllisten — dieselben Worte wie in Einstellungen und Excel-Liste. */
+const INHALT_WAHL: Record<EtikettCode, string> = {
+  eigen: 'Eigener Code (MB-…)',
+  nummer: 'Artikelnummer',
+  name: 'Bezeichnung',
+};
+
+const INHALT_TEXT: Record<EtikettCode, string> = {
+  eigen: 'den eigenen Code der App',
+  nummer: 'die Artikelnummer',
+  name: 'die Bezeichnung',
+};
 
 /**
- * Etiketten fuer Material ohne eigenen Code. Jedes Etikett traegt den
- * **eigenen** Code des Artikels; wer noch keinen hat, bekommt ihn hier.
+ * Etiketten fuer Material ohne Strichcode. Was der Code traegt und ob QR
+ * oder Strichcode, steht beim Artikel oder in den Einstellungen; die
+ * Codeart laesst sich hier noch je Zeile umstellen, ebenso die Stueckzahl.
  */
 async function etikettenDrucken(vorauswahl: number[] = []): Promise<void> {
   const artikel = (await db.artikel.toArray()).sort((a, b) => a.name.localeCompare(b.name, 'de'));
@@ -445,16 +488,24 @@ async function etikettenDrucken(vorauswahl: number[] = []): Promise<void> {
   // Schon beim Oeffnen nachladen, nicht erst beim Erzeugen: am iPhone darf
   // zwischen Fingertipp und Teilen-Dialog nicht viel Zeit vergehen, sonst
   // verweigert Safari den Dialog.
-  const { BOEGEN, etikettenPdf } = await import('../lib/etiketten');
+  const [{ etikettenPdf, probeblattPdf }, e] = await Promise.all([import('../lib/etiketten'), einstellungenLesen()]);
+  const wahl = e.etikettCode ?? 'eigen';
+  const boegen = alleBoegen(e.etikettBoegen);
 
   const ordner = ordnerListe(artikel);
   const zeilen = artikel.map((a) => {
     const an = h('input', { type: 'checkbox', checked: vorauswahl.includes(a.id!) });
+    const stueck = h('input', {
+      type: 'number', class: 'stueck', min: '1', max: '999', inputMode: 'numeric',
+      value: String(a.etikettStueck ?? 1), 'aria-label': `Stück für ${a.name}`,
+    });
+    // Wer eine Stueckzahl tippt, will das Etikett auch.
+    stueck.addEventListener('input', () => { an.checked = true; });
     const art = h('select', { 'aria-label': `Codeart für ${a.name}` },
-      h('option', { value: 'qr', text: 'QR' }),
-      h('option', { value: 'strich', text: 'Strichcode' }),
+      h('option', { value: 'qr', text: 'QR', selected: (a.etikettArt ?? 'qr') === 'qr' }),
+      h('option', { value: 'strich', text: 'Strichcode', selected: a.etikettArt === 'strich' }),
     );
-    return { a, an, art, el: h('label', { class: 'etikett-zeile' }, an, h('span', { class: 'nm', text: a.name }), art) };
+    return { a, an, stueck, art, el: h('label', { class: 'etikett-zeile' }, an, h('span', { class: 'nm', text: a.name }), stueck, art) };
   });
   // Bei hundert Artikeln aus einer Excel-Liste kreuzt niemand einzeln an.
   const ankreuzen = (wer: (a: Artikel) => boolean) => { for (const z of zeilen) z.an.checked = wer(z.a); };
@@ -490,19 +541,39 @@ async function etikettenDrucken(vorauswahl: number[] = []): Promise<void> {
       h('option', { value: 'strich', text: 'Strichcode' }),
     ),
   );
+
   const bogen = h('select', {},
-    ...BOEGEN.map((b) => h('option', { value: b.id, text: b.titel, selected: b.id === bogenWahl })),
+    ...boegen.map((b) => h('option', { value: b.id, text: b.titel, selected: b.id === bogenFinden(e.etikettBogen, e.etikettBoegen).id })),
   );
+  const gewaehlterBogen = () => bogenFinden(bogen.value, e.etikettBoegen);
+  const rasterZeile = h('small', { class: 'feld-hinweis' });
   const erstes = h('input', { type: 'number', value: '1', min: '1', inputMode: 'numeric' });
+  const bogenGeaendert = () => {
+    rasterZeile.textContent = rasterText(gewaehlterBogen());
+    erstes.max = String(raster(gewaehlterBogen()).jeBlatt);
+  };
+  bogen.addEventListener('change', bogenGeaendert);
+  bogenGeaendert();
 
   blatt(
     'Etiketten drucken',
     [
       h('p', { class: 'hinweis', style: 'padding:0',
-        text: 'Für Material ohne eigenen Code. Das Etikett trägt den eigenen Code des Artikels – fehlt er, wird er jetzt vergeben.' }),
+        text: `Der Code trägt ${INHALT_TEXT[wahl]}${wahl === 'nummer' ? ' – wer keine hat, den eigenen Code' : ''}, außer beim Artikel ist anderes eingestellt. Die Zahl je Zeile ist die Stückzahl.` }),
       schnell,
       h('div', { class: 'etiketten-liste' }, ...zeilen.map((z) => z.el)),
-      h('label', { class: 'feld' }, h('span', { text: 'Papier' }), bogen),
+      h('div', { class: 'feld' },
+        h('span', { text: 'Papier' }),
+        bogen,
+        rasterZeile,
+        h('button', {
+          class: 'knopf leise', type: 'button', text: 'Probeblatt (nur Umrisse)', style: 'margin-top:6px;width:auto',
+          onclick: async () => {
+            const ergebnis = await teilen([probeblattPdf(gewaehlterBogen())]);
+            if (ergebnis === 'nicht-moeglich') melden(...NICHT_MOEGLICH);
+          },
+        }),
+      ),
       h('label', { class: 'feld' }, h('span', { text: 'Beginnen bei Etikett Nr. (angebrochener Bogen)' }), erstes),
     ],
     [
@@ -515,26 +586,52 @@ async function etikettenDrucken(vorauswahl: number[] = []): Promise<void> {
             melden('Nichts gewählt', 'Bitte mindestens einen Artikel ankreuzen.');
             return;
           }
-          bogenWahl = bogen.value;
-          const etiketten = [];
+          const b = gewaehlterBogen();
+          if (b.id !== e.etikettBogen) await einstellungenSchreiben({ etikettBogen: b.id });
+          const etiketten: Etikett[] = [];
+          // Was nicht ging wie gewaehlt — hinterher sagen, statt still anders zu drucken.
+          let ohneNummer = 0;
+          let alsQr = 0;
           for (const z of gewaehlt) {
-            let code = z.a.codes?.find(istEigenerCode);
-            if (!code) {
-              code = eigenerCode();
-              await db.artikel.update(z.a.id!, { codes: [...(z.a.codes ?? []), code] });
+            let art = z.art.value as EtikettArt;
+            let quelle = z.a.etikettInhalt ?? wahl;
+            if (quelle === 'nummer' && !z.a.nummer) { quelle = 'eigen'; ohneNummer++; }
+            let inhalt: string;
+            let klartext: string;
+            if (quelle === 'eigen') {
+              let code = z.a.codes?.find(istEigenerCode);
+              if (!code) {
+                code = eigenerCode();
+                await db.artikel.update(z.a.id!, { codes: [...(z.a.codes ?? []), code] });
+              }
+              if (art === 'strich' && !strichcodeMoeglich(code, b)) { art = 'qr'; alsQr++; }
+              inhalt = art === 'qr' ? qrInhalt(code, z.a.name, z.a.einheit) : code;
+              klartext = code;
+            } else {
+              // Nummer oder Bezeichnung schlicht als Text: so liest auch ein
+              // Scanner ausserhalb der App etwas Brauchbares heraus.
+              inhalt = quelle === 'nummer' ? z.a.nummer! : z.a.name;
+              if (art === 'strich' && !strichcodeMoeglich(inhalt, b)) { art = 'qr'; alsQr++; }
+              klartext = quelle === 'nummer' ? `Art.-Nr. ${inhalt}` : '';
             }
-            etiketten.push({ name: z.a.name, einheit: z.a.einheit, code, art: z.art.value as 'qr' | 'strich' });
+            const etikett = { name: z.a.name, einheit: z.a.einheit, inhalt, klartext, art };
+            for (let i = stueckVon(z.stueck.value); i > 0; i--) etiketten.push(etikett);
           }
-          const b = BOEGEN.find((x) => x.id === bogen.value) ?? BOEGEN[0]!;
           const ergebnis = await teilen([etikettenPdf(etiketten, b, Number(erstes.value) || 1)]);
           if (ergebnis === 'nicht-moeglich') {
             melden(...NICHT_MOEGLICH);
           }
           neu();
+          const anders = [
+            ohneNummer ? `${ohneNummer === 1 ? '1 Artikel hat' : `${ohneNummer} Artikel haben`} keine Artikelnummer und ${ohneNummer === 1 ? 'trägt' : 'tragen'} den eigenen Code.` : '',
+            alsQr ? `${alsQr === 1 ? '1 Artikel bekommt' : `${alsQr} Artikel bekommen`} QR statt Strichcode: für einen Strichcode ist das Etikett zu klein, der Text zu lang oder er hat Umlaute.` : '',
+          ].filter(Boolean).join(' ');
           // Skaliert der Drucker die Seite, sitzen die Etiketten neben den
           // Feldern des Bogens.
           if (ergebnis === 'geteilt' && AM_PC) {
-            melden('Gespeichert', 'Das PDF liegt im Download-Ordner. Beim Drucken „Tatsächliche Größe" wählen, nicht „An Seite anpassen" – sonst sitzen die Etiketten neben den Feldern.');
+            melden('Gespeichert', `${etiketten.length} Etiketten. Das PDF liegt im Download-Ordner. Beim Drucken „Tatsächliche Größe" (100 %) wählen, nicht „An Seite anpassen" – sonst sitzen die Etiketten neben den Feldern.${anders ? ` ${anders}` : ''}`);
+          } else if (ergebnis === 'geteilt' && anders) {
+            melden('Etiketten erzeugt', anders);
           }
         },
       },

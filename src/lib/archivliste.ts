@@ -1,9 +1,9 @@
 import { db, einstellungenLesen, einstellungenSchreiben } from '../db';
-import type { Artikel } from '../model';
+import type { Artikel, EtikettArt, EtikettCode } from '../model';
 import { codePruefen, eigenerCode } from './codes';
 import { ordnerAngleichen, ordnerListe } from './ordner';
 import { datumSortierbar } from './format';
-import { csvLesen, istZip, xlsxDatei, xlsxLesen, type Tabelle } from './xlsx';
+import { csvLesen, istZip, xlsxDatei, xlsxLesen, type Auswahl, type Tabelle } from './xlsx';
 
 /**
  * Das Archiv als Excel-Liste: Vorlage zum Befuellen, Ausgabe des Bestands
@@ -27,10 +27,29 @@ const SPALTEN: Tabelle['spalten'] = [
   { titel: 'Einheit', breite: 10 },
   { titel: 'Ordner', breite: 20 },
   { titel: 'Codes', breite: 34, text: true },
+  // Wie das Etikett aussieht — leer gilt die Vorgabe der App.
+  { titel: 'Etikett', breite: 12 },
+  { titel: 'Etikett-Inhalt', breite: 18 },
+  { titel: 'Etiketten Stück', breite: 15, zahl: true },
 ];
 
-/** Dort haengt die Auswahlliste der Einheiten. */
-const SPALTE_EINHEIT = SPALTEN.findIndex((s) => s.titel === 'Einheit');
+const spalte = (titel: string) => SPALTEN.findIndex((s) => s.titel === titel);
+
+/** Die Worte in der Liste. Ohne Komma — Excel-Auswahllisten trennen damit. */
+const ART_WORT: Record<EtikettArt, string> = { qr: 'QR', strich: 'Strichcode' };
+const INHALT_WORT: Record<EtikettCode, string> = { eigen: 'Eigener Code', nummer: 'Artikelnummer', name: 'Bezeichnung' };
+const WIE_EINGESTELLT = 'Wie eingestellt';
+
+function auswahlen(einheiten: string[]): Auswahl[] {
+  return [
+    { spalte: spalte('Einheit'), werte: einheiten,
+      titel: 'Einheit', hinweis: 'Diese Einheit kennt die App noch nicht. Sie wird beim Einlesen dazugenommen.' },
+    { spalte: spalte('Etikett'), werte: Object.values(ART_WORT),
+      titel: 'Etikett', hinweis: 'Bitte QR oder Strichcode – sonst bleibt es, wie es ist.' },
+    { spalte: spalte('Etikett-Inhalt'), werte: [WIE_EINGESTELLT, ...Object.values(INHALT_WORT)],
+      titel: 'Etikett-Inhalt', hinweis: 'Bitte einen Wert aus der Liste – sonst bleibt es, wie es ist.' },
+  ];
+}
 
 // ------------------------------------------------------------- Ausgeben
 
@@ -42,6 +61,12 @@ const ANLEITUNG = [
   'Einheit: aus der Auswahl wählen. Eine Einheit, die die App noch nicht kennt, wird beim Einlesen dazugenommen. Leer heißt bei neuen Artikeln „Stk“, bei vorhandenen bleibt die bisherige.',
   'Ordner (freiwillig): etwa „Kabel“, „Schaltermaterial“ oder „Loxone“. Im Archiv liegen die Artikel dann in diesen Ordnern, beim Aufschreiben findet man sie auch darüber. Ein neuer Name wird ein neuer Ordner; leer heißt bei vorhandenen Artikeln: der Ordner bleibt, wie er ist.',
   'Codes (freiwillig): die Nummer unter dem Strichcode (EAN) oder ein eigener Code „MB-…“. Mehrere Codes mit Komma trennen. Die Spalte ist als Text formatiert – bitte so lassen, sonst macht Excel aus einer EAN „4,00638E+12“ und streicht führende Nullen.',
+  '',
+  'Etiketten (alles freiwillig)',
+  'Etikett: „QR“ oder „Strichcode“ – welcher Code auf das gedruckte Etikett kommt. Leer heißt bei neuen Artikeln QR. Passt ein Strichcode nicht aufs Etikett (zu langer Text, Umlaute, zu kleines Etikett), druckt die App stattdessen einen QR-Code und sagt das.',
+  'Etikett-Inhalt: was im Code steht. „Eigener Code“ ist der kurze Code der App („MB-…“). „Artikelnummer“ oder „Bezeichnung“ kann auch ein anderer Scanner im Betrieb lesen; ein Artikel ohne Nummer bekommt dann doch den eigenen Code. „Wie eingestellt“ folgt der Wahl unter Einstellungen › Etiketten.',
+  'Etiketten Stück: wie viele Etiketten der Druck für diesen Artikel vorschlägt, etwa eines je Lagerfach. Leer heißt eines. Beim Drucken lässt sich die Zahl noch ändern.',
+  'Leer heißt bei vorhandenen Artikeln in allen drei Spalten: es bleibt, wie es ist.',
   '',
   'Einlesen',
   'Als .xlsx speichern (CSV geht auch) und in MaterialBlitz unter Einstellungen › „Archiv als Excel“ › „Excel-Liste einlesen“ wählen. Vorher zeigt die App, was dazukommt und was sich ändert.',
@@ -66,7 +91,7 @@ function anleitung(): Tabelle {
 /** Leere Vorlage mit Auswahlliste der Einheiten und Anleitung. */
 export async function vorlageErzeugen(): Promise<File> {
   const { einheiten } = await einstellungenLesen();
-  const artikel: Tabelle = { name: BLATT, spalten: SPALTEN, zeilen: [], kopf: true, auswahl: { spalte: SPALTE_EINHEIT, werte: einheiten } };
+  const artikel: Tabelle = { name: BLATT, spalten: SPALTEN, zeilen: [], kopf: true, auswahl: auswahlen(einheiten) };
   return xlsxDatei([artikel, anleitung()], 'MaterialBlitz_Archiv_Vorlage.xlsx');
 }
 
@@ -81,9 +106,15 @@ export async function archivAlsExcel(): Promise<File> {
   const artikel: Tabelle = {
     name: BLATT,
     spalten: [...SPALTEN, { titel: 'Verwendet', breite: 11 }],
-    zeilen: alle.map((a) => [a.name, a.nummer ?? '', a.einheit, a.ordner ?? '', (a.codes ?? []).join(', '), String(a.anzahl)]),
+    // Das Etikett ausgeschrieben, auch wo die Vorgabe gilt: so sieht man,
+    // was gedruckt wuerde, und kann es gleich umstellen.
+    zeilen: alle.map((a) => [
+      a.name, a.nummer ?? '', a.einheit, a.ordner ?? '', (a.codes ?? []).join(', '),
+      ART_WORT[a.etikettArt ?? 'qr'], a.etikettInhalt ? INHALT_WORT[a.etikettInhalt] : WIE_EINGESTELLT,
+      String(a.etikettStueck ?? 1), String(a.anzahl),
+    ]),
     kopf: true,
-    auswahl: { spalte: SPALTE_EINHEIT, werte: einheiten },
+    auswahl: auswahlen(einheiten),
   };
   return xlsxDatei([artikel, anleitung()], `MaterialBlitz_Archiv_${datumSortierbar(Date.now())}.xlsx`);
 }
@@ -99,6 +130,12 @@ export interface Eintrag {
   /** Ebenso: leer laesst die bisherige Artikelnummer. */
   nummer?: string;
   codes: string[];
+  /** Fehlt: bleibt. */
+  etikettArt?: EtikettArt;
+  /** Fehlt: bleibt. null: zurueck auf "wie eingestellt". */
+  etikettInhalt?: EtikettCode | null;
+  /** Fehlt: bleibt. 1 ist die Vorgabe. */
+  etikettStueck?: number;
 }
 
 export interface Liste {
@@ -112,10 +149,20 @@ export interface Liste {
 }
 
 /** Kopfzeile erkennen — auch in Listen anderer Herkunft. */
-type Art = 'name' | 'nummer' | 'einheit' | 'ordner' | 'codes';
+type Art = 'name' | 'nummer' | 'einheit' | 'ordner' | 'codes' | 'art' | 'inhalt' | 'stueck';
+const KEINE: Record<Art, number> = { name: -1, nummer: -1, einheit: -1, ordner: -1, codes: -1, art: -1, inhalt: -1, stueck: -1 };
+
+/** Fuer Vergleiche: klein, ohne Leer- und Satzzeichen. */
+function wort(text: string): string {
+  return text.toLowerCase().replace(/[^a-zäöüß0-9]/g, '');
+}
 
 function spaltenArt(titel: string): Art | null {
-  const t = titel.toLowerCase().replace(/[^a-zäöüß]/g, '');
+  const t = wort(titel).replace(/[0-9]/g, '');
+  if (['etikett', 'etikettart', 'etikettenart', 'codeart', 'etikettcodeart'].includes(t)) return 'art';
+  if (['etikettinhalt', 'etiketteninhalt', 'codeinhalt', 'inhaltdescodes'].includes(t)) return 'inhalt';
+  if (['etikettenstück', 'etikettenstueck', 'etikettstück', 'etikettstueck', 'etikettenanzahl',
+    'anzahletiketten'].includes(t)) return 'stueck';
   // Vor dem Namen pruefen: "Artikelnummer" ist nicht "Artikel". Ein blosses
   // "Nr." bleibt aussen vor — oft ist das nur die laufende Zeilennummer.
   if (['artikelnummer', 'artikelnr', 'artnr', 'artikelno', 'nummer', 'materialnummer', 'materialnr',
@@ -151,9 +198,9 @@ export async function listeLesen(d: File): Promise<Liste | { fehler: string }> {
   // Die Kopfzeile muss nicht ganz oben stehen: Listen vom Grosshaendler
   // haben oft erst ein paar Zeilen Briefkopf.
   let kopf = -1;
-  let sp: Record<Art, number> = { name: -1, nummer: -1, einheit: -1, ordner: -1, codes: -1 };
+  let sp: Record<Art, number> = { ...KEINE };
   for (let r = 0; r < Math.min(zeilen.length, 15) && kopf < 0; r++) {
-    const s = { name: -1, nummer: -1, einheit: -1, ordner: -1, codes: -1 };
+    const s = { ...KEINE };
     (zeilen[r] ?? []).forEach((t, i) => {
       const art = spaltenArt(t);
       if (art && s[art] < 0) s[art] = i;
@@ -183,8 +230,11 @@ export async function listeLesen(d: File): Promise<Liste | { fehler: string }> {
     const codesRoh = zelle(sp.codes);
     const ordnerRoh = zelle(sp.ordner);
     const nummer = zelle(sp.nummer).replace(/\s+/g, ' ') || undefined;
+    const artRoh = zelle(sp.art);
+    const inhaltRoh = zelle(sp.inhalt);
+    const stueckRoh = zelle(sp.stueck);
     if (!name) {
-      if (einheitRoh || codesRoh || ordnerRoh || nummer) hinweise.push(`Zeile ${nr}: keine Bezeichnung – übergangen.`);
+      if (einheitRoh || codesRoh || ordnerRoh || nummer || artRoh || inhaltRoh || stueckRoh) hinweise.push(`Zeile ${nr}: keine Bezeichnung – übergangen.`);
       continue;
     }
 
@@ -218,16 +268,46 @@ export async function listeLesen(d: File): Promise<Liste | { fehler: string }> {
       if (!codes.includes(p.code)) codes.push(p.code);
     }
 
+    // Etikett: was nicht zu deuten ist, bleibt weg — mit Hinweis.
+    let etikettArt: EtikettArt | undefined;
+    if (artRoh) {
+      const w = wort(artRoh);
+      if (['qr', 'qrcode'].includes(w)) etikettArt = 'qr';
+      else if (['strichcode', 'strich', 'barcode', 'code128'].includes(w)) etikettArt = 'strich';
+      else hinweise.push(`Zeile ${nr}: Etikett „${artRoh}“ unbekannt – bitte QR oder Strichcode.`);
+    }
+    let etikettInhalt: EtikettCode | null | undefined;
+    if (inhaltRoh) {
+      const w = wort(inhaltRoh);
+      if (['wieeingestellt', 'standard', 'vorgabe'].includes(w)) etikettInhalt = null;
+      else if (['eigenercode', 'eigener', 'eigen', 'mbcode'].includes(w)) etikettInhalt = 'eigen';
+      else if (['artikelnummer', 'nummer', 'artnr', 'artikelnr'].includes(w)) etikettInhalt = 'nummer';
+      else if (['bezeichnung', 'name', 'artikelbezeichnung'].includes(w)) etikettInhalt = 'name';
+      else hinweise.push(`Zeile ${nr}: Etikett-Inhalt „${inhaltRoh}“ unbekannt – übergangen.`);
+    }
+    let etikettStueck: number | undefined;
+    if (stueckRoh) {
+      const n = Number(stueckRoh.replace(',', '.'));
+      if (Number.isInteger(n) && n >= 1 && n <= 999) etikettStueck = n;
+      else hinweise.push(`Zeile ${nr}: Etiketten Stück „${stueckRoh}“ – bitte eine ganze Zahl von 1 bis 999.`);
+    }
+    const etikett = {
+      ...(etikettArt ? { etikettArt } : {}),
+      ...(etikettInhalt !== undefined ? { etikettInhalt } : {}),
+      ...(etikettStueck ? { etikettStueck } : {}),
+    };
+
     const da = nachName.get(name);
     if (da) {
       hinweise.push(`Zeile ${nr}: „${name}“ stand schon in Zeile ${zeileVonName.get(name)} – zusammengefasst.`);
       if (einheit) da.einheit = einheit;
       if (ordner) da.ordner = ordner;
       if (nummer) da.nummer = nummer;
+      Object.assign(da, etikett);
       for (const c of codes) if (!da.codes.includes(c)) da.codes.push(c);
       continue;
     }
-    nachName.set(name, { name, einheit, ordner, nummer, codes });
+    nachName.set(name, { name, einheit, ordner, nummer, codes, ...etikett });
     zeileVonName.set(name, nr);
   }
 
@@ -277,6 +357,19 @@ function anwenden(liste: Liste, bestand: Artikel[], eigeneCodes: boolean) {
     if (!warNeu && e.einheit && e.einheit !== a.einheit) { a.einheit = e.einheit; anders = true; }
     if (!warNeu && e.ordner && e.ordner !== a.ordner) { a.ordner = e.ordner; anders = true; }
     if (!warNeu && e.nummer && e.nummer !== a.nummer) { a.nummer = e.nummer; anders = true; }
+
+    // Etikett: die Vorgabe (QR, wie eingestellt, 1 Stueck) wird nicht
+    // gespeichert, sondern das Feld entfernt — so bleibt der Artikel schlank.
+    const etikett: Partial<Artikel> = {};
+    if (e.etikettArt) etikett.etikettArt = e.etikettArt === 'strich' ? 'strich' : undefined;
+    if (e.etikettInhalt !== undefined) etikett.etikettInhalt = e.etikettInhalt ?? undefined;
+    if (e.etikettStueck !== undefined) etikett.etikettStueck = e.etikettStueck > 1 ? e.etikettStueck : undefined;
+    for (const [feld, wert] of Object.entries(etikett) as Array<[keyof Artikel, unknown]>) {
+      if (a[feld] === wert) continue;
+      if (wert === undefined) delete a[feld];
+      else (a as unknown as Record<string, unknown>)[feld] = wert;
+      if (!warNeu) anders = true;
+    }
 
     for (const c of e.codes) {
       const traeger = nachCode.get(c);

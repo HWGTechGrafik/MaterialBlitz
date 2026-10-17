@@ -25,6 +25,36 @@ export interface Artikel {
    * Scheins — damit das Buero ohne Nachschlagen bestellen und verrechnen kann.
    */
   nummer?: string;
+  /** Welcher Code aufs Etikett kommt. Fehlt: QR. */
+  etikettArt?: EtikettArt;
+  /** Was der Code traegt. Fehlt: wie in den Einstellungen. */
+  etikettInhalt?: EtikettCode;
+  /** Wie viele Etiketten der Druck vorschlaegt — etwa eines je Fach. Fehlt: eines. */
+  etikettStueck?: number;
+}
+
+export type EtikettArt = 'qr' | 'strich';
+
+/**
+ * Ein Etikettenformat auf einem A4-Blatt. Ohne feste Raender: der Block
+ * sitzt mittig, so wie die Boegen geschnitten sind. Spalten und Zeilen
+ * ergeben sich aus den Massen, wenn sie fehlen.
+ */
+export interface EtikettBogen {
+  id: string;
+  titel: string;
+  /** Ein Etikett, in mm. */
+  breite: number;
+  hoehe: number;
+  /** Luecke zwischen den Spalten bzw. Zeilen, in mm. */
+  abstandX?: number;
+  abstandY?: number;
+  spalten?: number;
+  zeilen?: number;
+  /** Blatt quer. Im PDF gedreht, nicht erst im Druckdialog — der verkleinert sonst. */
+  quer?: boolean;
+  /** Normales Papier: duenne Linien zum Ausschneiden. */
+  schnitt?: boolean;
 }
 
 /**
@@ -143,6 +173,14 @@ export interface Firma {
 /** Was aus der Lizenz auf Schein und Dashboard steht. */
 export type Ausweis = 'beides' | 'name' | 'firma';
 
+/**
+ * Was der QR- oder Strichcode eines gedruckten Etiketts traegt: der eigene
+ * Code der App ("MB-..."), die Artikelnummer oder die Bezeichnung. Mit
+ * Nummer oder Bezeichnung lesen auch andere Scanner im Betrieb etwas
+ * Brauchbares heraus.
+ */
+export type EtikettCode = 'eigen' | 'nummer' | 'name';
+
 /** Ein Bild, verkleinert und als Datenstring — so passt es in Sicherung und Dropbox. */
 export interface Logo {
   /** data:image/png oder data:image/jpeg */
@@ -167,6 +205,12 @@ export interface Einstellungen {
   lizenzGesetzt?: number;
   /** Fehlt bei aelteren Daten — gilt dann als 'beides'. */
   ausweis?: Ausweis;
+  /** Fehlt bei aelteren Daten — gilt dann als 'eigen', wie bisher. */
+  etikettCode?: EtikettCode;
+  /** Zuletzt gewaehltes Etikettenformat (id). */
+  etikettBogen?: string;
+  /** Selbst angelegte Etikettenformate, zusaetzlich zu den Vorlagen. */
+  etikettBoegen?: EtikettBogen[];
   /**
    * Adresse des Bueros. Steht **nicht** auf dem PDF — sie liegt beim Senden
    * in der Zwischenablage, damit sie in der Mail nur noch einzusetzen ist.

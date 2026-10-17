@@ -45,7 +45,7 @@ export interface Umschlag {
     /** Wofuer der Grundstock gedacht ist, etwa "Elektro". */
     titel: string;
     /** Codes nur im weitergegebenen Archiv; der Grundstock hat keine. */
-    artikel: Array<{ name: string; einheit: string; codes?: string[]; ordner?: string; nummer?: string }>;
+    artikel: Array<{ name: string; einheit: string; codes?: string[]; ordner?: string; nummer?: string } & EtikettFelder>;
     /** Einheiten, die die Artikel brauchen und die feste Liste nicht hat. */
     einheiten: string[];
     /**
@@ -61,6 +61,19 @@ export interface Umschlag {
      * einfach, und die eigene Einteilung bleibt.
      */
     mitOrdner?: true;
+    /** Ebenso fuer die Etikett-Felder: fehlt eines, gilt dort die Vorgabe. */
+    mitEtikett?: true;
+  };
+}
+
+type EtikettFelder = Pick<Artikel, 'etikettArt' | 'etikettInhalt' | 'etikettStueck'>;
+
+/** Nur die gesetzten Etikett-Felder — die Vorgabe steht nicht in der Datei. */
+function etikettFelder(a: EtikettFelder): EtikettFelder {
+  return {
+    ...(a.etikettArt ? { etikettArt: a.etikettArt } : {}),
+    ...(a.etikettInhalt ? { etikettInhalt: a.etikettInhalt } : {}),
+    ...(a.etikettStueck ? { etikettStueck: a.etikettStueck } : {}),
   };
 }
 
@@ -155,12 +168,14 @@ export async function archivPacken(absender: string | undefined): Promise<File> 
       titel: 'Archiv',
       massgeblich: true,
       mitOrdner: true,
+      mitEtikett: true,
       artikel: artikel.map((a) => ({
         name: a.name,
         einheit: a.einheit,
         ...(a.codes?.length ? { codes: a.codes } : {}),
         ...(a.ordner ? { ordner: a.ordner } : {}),
         ...(a.nummer ? { nummer: a.nummer } : {}),
+        ...etikettFelder(a),
       })),
       einheiten: [...new Set(artikel.map((a) => a.einheit))],
     },
@@ -323,11 +338,17 @@ export async function sicherungEinspielen(
       const ordner = da?.ordner ?? a.ordner;
       // Ebenso die Artikelnummer.
       const nummer = da?.nummer ?? a.nummer;
-      if (da) await db.artikel.update(da.id!, { anzahl: Math.max(da.anzahl, a.anzahl), codes, ordner, nummer });
+      // Und die Etikett-Einstellungen, Feld fuer Feld.
+      const etikett = etikettFelder({
+        etikettArt: da?.etikettArt ?? a.etikettArt,
+        etikettInhalt: da?.etikettInhalt ?? a.etikettInhalt,
+        etikettStueck: da?.etikettStueck ?? a.etikettStueck,
+      });
+      if (da) await db.artikel.update(da.id!, { anzahl: Math.max(da.anzahl, a.anzahl), codes, ordner, nummer, ...etikett });
       else {
         await db.artikel.add({
           name: a.name, einheit: a.einheit, anzahl: a.anzahl, codes,
-          ...(ordner ? { ordner } : {}), ...(nummer ? { nummer } : {}),
+          ...(ordner ? { ordner } : {}), ...(nummer ? { nummer } : {}), ...etikett,
         });
       }
     }
@@ -452,6 +473,7 @@ export async function katalogEinlesen(
           ...(mitgebracht.length ? { codes: [...mitgebracht] } : {}),
           ...(a.ordner ? { ordner: a.ordner } : {}),
           ...(a.nummer ? { nummer: a.nummer } : {}),
+          ...etikettFelder(a),
         });
         neu++;
         continue;
@@ -461,9 +483,17 @@ export async function katalogEinlesen(
       // Eine Nummer der Datei gilt; fehlt sie dort, bleibt die eigene —
       // aeltere Fassungen kennen das Feld nicht.
       const nummer = a.nummer ?? da.nummer;
+      // Die Datei kennt die Etikett-Felder: dann gilt sie, auch wo sie
+      // nichts sagt (= Vorgabe). Aeltere Dateien lassen die eigenen stehen.
+      const quelle = k.mitEtikett ? a : da;
+      const etikett = {
+        etikettArt: quelle.etikettArt, etikettInhalt: quelle.etikettInhalt, etikettStueck: quelle.etikettStueck,
+      };
+      const etikettAnders = etikett.etikettArt !== da.etikettArt || etikett.etikettInhalt !== da.etikettInhalt
+        || etikett.etikettStueck !== da.etikettStueck;
       if (da.einheit !== a.einheit || codes.length !== (da.codes?.length ?? 0) || ordner !== da.ordner
-        || nummer !== da.nummer) {
-        await db.artikel.update(da.id!, { einheit: a.einheit, codes, ordner, nummer });
+        || nummer !== da.nummer || etikettAnders) {
+        await db.artikel.update(da.id!, { einheit: a.einheit, codes, ordner, nummer, ...etikett });
         angeglichen++;
       }
     }

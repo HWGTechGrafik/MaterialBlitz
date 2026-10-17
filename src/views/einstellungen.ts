@@ -1,5 +1,6 @@
 import { db, einstellungenLesen, einstellungenSchreiben } from '../db';
-import { EINHEITEN_STANDARD, type Ausweis, type Logo } from '../model';
+import { EINHEITEN_STANDARD, type Ausweis, type Einstellungen, type EtikettBogen, type EtikettCode, type Logo } from '../model';
+import { ABSTAND_MAX, EIGENE_MAX, MASS_MIN, alleBoegen, bogenFinden, raster, rasterText } from '../lib/boegen';
 import { neu, zustand } from '../store';
 import { blatt, h, melden } from '../ui';
 import { datum, zeit } from '../lib/format';
@@ -98,6 +99,7 @@ export async function einstellungenView(): Promise<HTMLElement[]> {
       await sicherungKarte(),
       archivKarte(),
       excelKarte(),
+      etikettenKarte(e),
       einheitenKarte(e.einheiten),
       await katalogLeerenKarte(),
       lizenzKarte(e.ausweis ?? 'beides'),
@@ -299,7 +301,7 @@ function excelKarte(): HTMLElement {
 
   return h('div', { class: 'karte' },
     h('h2', { text: 'Archiv als Excel' }),
-    h('p', { text: 'Viele Artikel auf einmal: die Vorlage in Excel befüllen – Bezeichnung, Einheit und auf Wunsch Artikelnummer, Ordner und die Nummer unter dem Strichcode – und hier einlesen. Gelöscht wird dabei nichts.' }),
+    h('p', { text: 'Viele Artikel auf einmal: die Vorlage in Excel befüllen – Bezeichnung, Einheit und auf Wunsch Artikelnummer, Ordner, die Nummer unter dem Strichcode und wie das Etikett aussehen soll – und hier einlesen. Gelöscht wird dabei nichts.' }),
     h('div', { class: 'knopf-stapel' },
       h('button', {
         class: 'knopf zweit', type: 'button', text: 'Vorlage herunterladen',
@@ -320,6 +322,206 @@ function excelKarte(): HTMLElement {
         onclick: () => void excelEinlesen(modul),
       }),
     ),
+  );
+}
+
+// ------------------------------------------------------------- Etiketten
+
+/**
+ * Was die gedruckten Etiketten im Code tragen und auf welchem Bogen sie
+ * landen. Der Inhalt gilt nur fuer kuenftige Etiketten; gescannt werden alle
+ * drei Arten, egal was hier steht — sonst waeren die schon geklebten nach
+ * einem Wechsel wertlos. Einzelne Artikel koennen anderes eingestellt haben.
+ */
+function etikettenKarte(e: Einstellungen): HTMLElement {
+  const auswahl = h('select', { 'aria-label': 'Inhalt des Codes' },
+    ...([
+      ['eigen', 'Eigener Code der App (MB-…)'],
+      ['nummer', 'Artikelnummer'],
+      ['name', 'Bezeichnung des Artikels'],
+    ] as const).map(([wert, text]) => h('option', { value: wert, text, selected: wert === (e.etikettCode ?? 'eigen') })),
+  );
+  auswahl.onchange = async () => {
+    zustand.einstellungen = await einstellungenSchreiben({ etikettCode: auswahl.value as EtikettCode });
+    melden('Gespeichert', 'Gilt für die nächsten Etiketten. Schon geklebte erkennt die App weiterhin.');
+  };
+
+  const eigene = e.etikettBoegen ?? [];
+  const jetzt = bogenFinden(e.etikettBogen, eigene);
+  const format = h('select', { 'aria-label': 'Etikettenformat' },
+    ...alleBoegen(eigene).map((b) => h('option', { value: b.id, text: b.titel, selected: b.id === jetzt.id })),
+  );
+  const rasterZeile = h('small', { class: 'feld-hinweis', text: rasterText(jetzt) });
+  const bearbeiten = h('button', {
+    class: 'knopf zweit', type: 'button', text: 'Eigene Größe bearbeiten…',
+    hidden: !eigene.some((b) => b.id === jetzt.id),
+    onclick: () => eigeneGroesse(bogenFinden(format.value, eigene)),
+  });
+  format.onchange = async () => {
+    const b = bogenFinden(format.value, eigene);
+    rasterZeile.textContent = rasterText(b);
+    bearbeiten.hidden = !eigene.some((x) => x.id === b.id);
+    zustand.einstellungen = await einstellungenSchreiben({ etikettBogen: b.id });
+  };
+
+  return h('div', { class: 'karte' },
+    h('h2', { text: 'Etiketten' }),
+    h('p', { text: 'Was der QR- oder Strichcode auf gedruckten Etiketten trägt. Der eigene Code ist kurz und eindeutig. Artikelnummer oder Bezeichnung kann auch ein anderer Scanner im Betrieb lesen. Fehlt einem Artikel die Nummer, bekommt sein Etikett den eigenen Code. Einzelne Artikel lassen sich im Archiv oder über die Excel-Liste anders einstellen.' }),
+    h('label', { class: 'feld', style: 'margin-top:12px' }, h('span', { text: 'Inhalt des Codes' }), auswahl),
+    h('label', { class: 'feld' }, h('span', { text: 'Etikettenformat' }), format, rasterZeile),
+    h('p', { class: 'feld-hinweis', text: 'Beim Drucken immer „Tatsächliche Größe“ (100 %) wählen, nicht „An Seite anpassen“. Bei einem neuen Format zuerst ein Probeblatt auf Normalpapier drucken und gegen den Etikettenbogen ins Licht halten.' }),
+    h('div', { class: 'knopf-stapel' },
+      h('button', {
+        class: 'knopf zweit', type: 'button', text: 'Probeblatt drucken',
+        onclick: async () => {
+          const { probeblattPdf } = await import('../lib/etiketten');
+          const ergebnis = await teilen([probeblattPdf(bogenFinden(format.value, eigene))]);
+          if (ergebnis === 'nicht-moeglich') melden(...NICHT_MOEGLICH);
+          if (ergebnis === 'geteilt' && AM_PC) melden('Gespeichert', 'Das Probeblatt liegt im Download-Ordner.');
+        },
+      }),
+      bearbeiten,
+      h('button', { class: 'knopf zweit', type: 'button', text: 'Eigene Größe anlegen…', onclick: () => eigeneGroesse() }),
+    ),
+  );
+}
+
+/** Zahl aus einem Feld, mit Komma oder Punkt; leer ist undefined. */
+function mass(feld: HTMLInputElement): number | undefined {
+  const t = feld.value.trim().replace(',', '.');
+  if (!t) return undefined;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+/**
+ * Eine eigene Etikettengroesse anlegen oder aendern. Fuer Boegen, die keine
+ * Vorlage trifft: Masse vom Bogen-Etikett abschreiben, Luecken dazu, und wo
+ * die Rechnung zu viele ergibt, Spalten und Zeilen fest eintragen.
+ */
+function eigeneGroesse(alt?: EtikettBogen, entwurf?: Partial<EtikettBogen>): void {
+  const w = { ...alt, ...entwurf };
+  const zahl = (wert: number | undefined, platzhalter: string) => h('input', {
+    type: 'text', inputMode: 'decimal', value: wert === undefined ? '' : String(wert).replace('.', ','), placeholder: platzhalter,
+  });
+  const titel = h('input', { type: 'text', value: w.titel ?? '', placeholder: 'z.B. Regal-Etiketten 48 × 25' });
+  const breite = zahl(w.breite, '70');
+  const hoehe = zahl(w.hoehe, '37');
+  const abstandX = zahl(w.abstandX, '0');
+  const abstandY = zahl(w.abstandY, '0');
+  const spalten = zahl(w.spalten, 'so viele wie passen');
+  const zeilen = zahl(w.zeilen, 'so viele wie passen');
+  const quer = h('input', { type: 'checkbox', checked: Boolean(w.quer) });
+  const schnitt = h('input', { type: 'checkbox', checked: Boolean(w.schnitt) });
+  const info = h('small', { class: 'feld-hinweis' });
+
+  const lesen = (): Partial<EtikettBogen> => ({
+    titel: titel.value.trim(),
+    breite: mass(breite), hoehe: mass(hoehe),
+    abstandX: mass(abstandX) ?? 0, abstandY: mass(abstandY) ?? 0,
+    spalten: mass(spalten), zeilen: mass(zeilen),
+    quer: quer.checked, schnitt: schnitt.checked,
+  });
+  /** Fehlertext — oder null, wenn alles passt. */
+  const pruefen = (b: Partial<EtikettBogen>): string | null => {
+    const blattB = b.quer ? 297 : 210;
+    const blattH = b.quer ? 210 : 297;
+    if (!b.breite || Number.isNaN(b.breite) || b.breite < MASS_MIN.breite || b.breite > blattB) {
+      return `Breite: ${MASS_MIN.breite} bis ${blattB} mm.`;
+    }
+    if (!b.hoehe || Number.isNaN(b.hoehe) || b.hoehe < MASS_MIN.hoehe || b.hoehe > blattH) {
+      return `Höhe: ${MASS_MIN.hoehe} bis ${blattH} mm.`;
+    }
+    for (const [name, n] of [['Abstand Spalten', b.abstandX], ['Abstand Zeilen', b.abstandY]] as const) {
+      if (n === undefined || Number.isNaN(n) || n < 0 || n > ABSTAND_MAX) return `${name}: 0 bis ${ABSTAND_MAX} mm.`;
+    }
+    for (const [name, n] of [['Spalten', b.spalten], ['Zeilen', b.zeilen]] as const) {
+      if (n !== undefined && (!Number.isInteger(n) || n < 1 || n > 99)) return `${name}: leer oder eine ganze Zahl von 1 bis 99.`;
+    }
+    return null;
+  };
+  const zeigen = () => {
+    const b = lesen();
+    const fehler = pruefen(b);
+    info.textContent = fehler ?? rasterText({ id: '', titel: '', ...b } as EtikettBogen);
+    info.classList.toggle('falsch', Boolean(fehler));
+  };
+  for (const f of [breite, hoehe, abstandX, abstandY, spalten, zeilen]) f.addEventListener('input', zeigen);
+  for (const f of [quer, schnitt]) f.addEventListener('change', zeigen);
+  zeigen();
+
+  const feld = (beschriftung: string, eingabe: HTMLElement) =>
+    h('label', { class: 'feld' }, h('span', { text: beschriftung }), eingabe);
+
+  blatt(
+    alt ? 'Eigene Größe bearbeiten' : 'Eigene Etikettengröße',
+    [
+      h('p', { class: 'hinweis', style: 'padding:0', text: 'Maße eines Etiketts in mm, wie auf der Packung. Die Etiketten sitzen mittig auf dem A4-Blatt. Stimmt die Zahl je Blatt nicht mit dem Bogen überein, Spalten und Zeilen fest eintragen.' }),
+      feld('Name', titel),
+      h('div', { class: 'etikett-wahl' }, feld('Breite (mm)', breite), feld('Höhe (mm)', hoehe)),
+      h('div', { class: 'etikett-wahl' }, feld('Abstand Spalten', abstandX), feld('Abstand Zeilen', abstandY)),
+      h('div', { class: 'etikett-wahl' }, feld('Spalten', spalten), feld('Zeilen', zeilen)),
+      h('label', { class: 'etikett-zeile' }, quer, h('span', { class: 'nm', text: 'Blatt quer (A4 liegend)' })),
+      h('label', { class: 'etikett-zeile' }, schnitt, h('span', { class: 'nm', text: 'Normales Papier: Schnittlinien drucken' })),
+      info,
+    ],
+    [
+      { text: 'Abbrechen', art: 'zweit' },
+      ...(alt
+        ? [{
+            text: 'Löschen', art: 'gefahr' as const,
+            tun: async () => {
+              const e = await einstellungenLesen();
+              zustand.einstellungen = await einstellungenSchreiben({
+                etikettBoegen: (e.etikettBoegen ?? []).filter((b) => b.id !== alt.id),
+                ...(e.etikettBogen === alt.id ? { etikettBogen: undefined } : {}),
+              });
+              neu();
+            },
+          }]
+        : []),
+      {
+        text: 'Speichern',
+        tun: async () => {
+          const b = lesen();
+          const fehler = pruefen(b);
+          if (fehler) {
+            blatt('Bitte prüfen', [h('p', { class: 'hinweis', style: 'padding:0', text: fehler })],
+              [{ text: 'Zurück', tun: () => eigeneGroesse(alt, b) }]);
+            return;
+          }
+          const e = await einstellungenLesen();
+          const liste = e.etikettBoegen ?? [];
+          if (!alt && liste.length >= EIGENE_MAX) {
+            melden('Zu viele', `Höchstens ${EIGENE_MAX} eigene Größen – bitte zuerst eine löschen.`);
+            return;
+          }
+          const mm = (n: number) => n.toLocaleString('de-AT', { maximumFractionDigits: 2 });
+          const fertig: EtikettBogen = {
+            id: alt?.id ?? `eigen-${Date.now().toString(36)}`,
+            titel: b.titel || `Eigene: ${mm(b.breite!)} × ${mm(b.hoehe!)} mm`,
+            breite: b.breite!, hoehe: b.hoehe!,
+            ...(b.abstandX ? { abstandX: b.abstandX } : {}),
+            ...(b.abstandY ? { abstandY: b.abstandY } : {}),
+            ...(b.spalten ? { spalten: b.spalten } : {}),
+            ...(b.zeilen ? { zeilen: b.zeilen } : {}),
+            ...(b.quer ? { quer: true } : {}),
+            ...(b.schnitt ? { schnitt: true } : {}),
+          };
+          if (!raster(fertig).jeBlatt) {
+            blatt('Bitte prüfen', [h('p', { class: 'hinweis', style: 'padding:0', text: 'So passt kein Etikett aufs Blatt.' })],
+              [{ text: 'Zurück', tun: () => eigeneGroesse(alt, b) }]);
+            return;
+          }
+          zustand.einstellungen = await einstellungenSchreiben({
+            etikettBoegen: alt ? liste.map((x) => (x.id === alt.id ? fertig : x)) : [...liste, fertig],
+            etikettBogen: fertig.id,
+          });
+          neu();
+          melden('Gespeichert', `${fertig.titel}: ${rasterText(fertig)}. Am besten gleich ein Probeblatt drucken.`);
+        },
+      },
+    ],
   );
 }
 
