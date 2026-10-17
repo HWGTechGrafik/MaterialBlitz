@@ -389,7 +389,7 @@ function fragen(u: Umschlag, rev: string | null, schluesselHinauf: boolean): voi
     entschieden = true;
     status.frage = false;
     zurueckgestellt = false;
-    tun().catch(() => melden('Dropbox', 'Das hat nicht geklappt – bitte „Jetzt abgleichen" in den Einstellungen wählen.'));
+    tun().catch(() => melden('Dropbox', 'Das hat nicht geklappt – bitte „Jetzt abgleichen" in den Einstellungen unter „Daten“ wählen.'));
   };
   const spaeter = () => {
     if (entschieden) return;

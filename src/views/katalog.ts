@@ -102,7 +102,7 @@ async function katalogListe(rumpf: HTMLElement): Promise<void> {
 
   if (!artikel.length) {
     offenerOrdner = null;
-    rumpf.append(h('div', { class: 'leer', text: 'Das Archiv wächst von selbst: was du in einem Projekt aufschreibst, steht danach hier. Viele Artikel auf einmal kommen über eine Excel-Liste herein – Einstellungen › Archiv als Excel.' }));
+    rumpf.append(h('div', { class: 'leer', text: 'Das Archiv wächst von selbst: was du in einem Projekt aufschreibst, steht danach hier. Viele Artikel auf einmal kommen über eine Excel-Liste herein – Einstellungen › Archiv › Archiv als Excel.' }));
     return;
   }
 

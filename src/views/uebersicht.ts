@@ -3,6 +3,7 @@ import { SICHERUNG_ARTIKEL, SICHERUNG_TAGE, projektTitel, projektUnter, type Bau
 import { erstellerText, gehe, neu, zustand } from '../store';
 import { blatt, h, ikon, kopfKnopf, kopfRechts, marke, melden, umschalter, wischbar, type NeuArt } from '../ui';
 import { artikelBearbeiten, projektLoeschen } from './katalog';
+import { einstellungenOeffnen } from './einstellungen';
 import { tageSeit } from '../lib/format';
 import { dateiWaehlen } from '../lib/share';
 import { AM_PC } from '../lib/geraet';
@@ -291,7 +292,7 @@ async function sicherungFaellig(): Promise<HTMLElement | null> {
         type: 'button',
         text: 'In den Einstellungen sichern',
         style: 'text-align:left;padding:0;min-height:32px',
-        onclick: () => gehe('einstellungen'),
+        onclick: () => einstellungenOeffnen('daten'),
       }),
     ),
   );

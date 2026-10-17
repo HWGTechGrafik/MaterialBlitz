@@ -362,6 +362,9 @@ mark {
   background: none; color: var(--ink-muted); font: 600 16px var(--ui);
 }
 .umschalter button[aria-pressed='true'] { background: var(--ader); color: #fff; }
+/* Register der Einstellungen: fest unter dem Kopf, vier nebeneinander. */
+.register-leiste { flex: none; margin: 4px 16px 0; }
+.register-leiste button { min-height: 40px; font-size: 15px; min-width: 0; padding: 0 2px; }
 
 /* -------------------------------------------------------------- Karten */
 
@@ -635,6 +638,10 @@ mark {
 .am-pc .kopf-tat:hover:not(:disabled) { border-color: var(--ader); }
 .am-pc .kopf-tat.haupt:hover:not(:disabled) { filter: brightness(1.1); }
 .am-pc .suchzeile { margin: 14px var(--spalte) 6px; }
+/* Am PC links buendig und nur so breit wie noetig, wie Reiter ueber einer Akte. */
+.am-pc .register-leiste { margin: 4px var(--spalte) 0; align-self: flex-start; }
+.am-pc .register-leiste button { flex: none; padding: 0 22px; cursor: pointer; }
+.am-pc .register-leiste button:not([aria-pressed='true']):hover { color: var(--ink); }
 .am-pc .rumpf { padding: 16px var(--spalte) 24px; }
 .am-pc .fuss { padding: 0 var(--spalte); background: var(--ground); }
 

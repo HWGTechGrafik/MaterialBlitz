@@ -69,7 +69,7 @@ const ANLEITUNG = [
   'Leer heißt bei vorhandenen Artikeln in allen drei Spalten: es bleibt, wie es ist.',
   '',
   'Einlesen',
-  'Als .xlsx speichern (CSV geht auch) und in MaterialBlitz unter Einstellungen › „Archiv als Excel“ › „Excel-Liste einlesen“ wählen. Vorher zeigt die App, was dazukommt und was sich ändert.',
+  'Als .xlsx speichern (CSV geht auch) und in MaterialBlitz unter Einstellungen › Archiv › „Excel-Liste einlesen“ wählen. Vorher zeigt die App, was dazukommt und was sich ändert.',
   'Gelöscht wird dabei nichts: Artikel, die nicht in der Liste stehen, bleiben. Codes kommen zu den vorhandenen dazu. Ein Code gehört genau einem Artikel – hing er bisher an einem anderen, wandert er herüber.',
   'Weitere Spalten (Preis, Hersteller …) stören nicht, sie werden übergangen. Die Spalten werden auch erkannt, wenn sie „Artikel“, „Material“, „Art.-Nr.“, „EAN“ oder „Strichcode“ heißen – eine Liste vom Großhändler lässt sich oft direkt einlesen.',
   '',

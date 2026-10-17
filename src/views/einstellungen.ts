@@ -1,7 +1,7 @@
 import { db, einstellungenLesen, einstellungenSchreiben } from '../db';
 import { EINHEITEN_STANDARD, type Ausweis, type Einstellungen, type EtikettBogen, type EtikettCode, type Logo } from '../model';
 import { ABSTAND_MAX, EIGENE_MAX, MASS_MIN, alleBoegen, bogenFinden, raster, rasterText } from '../lib/boegen';
-import { neu, zustand } from '../store';
+import { gehe, neu, zustand } from '../store';
 import { blatt, h, melden } from '../ui';
 import { datum, zeit } from '../lib/format';
 import { datumText, pruefen, saeubern } from '../lib/lizenz';
@@ -14,6 +14,29 @@ import { archivPacken, sicherungPacken } from '../lib/transfer';
 import * as dropbox from '../lib/dropbox';
 import * as abgleich from '../lib/abgleich';
 
+/**
+ * Die Einstellungen in Registern: eine lange Seite mit einem Dutzend Karten
+ * fand am Handy niemand mehr durch. Kurze Namen — am Handy stehen alle vier
+ * nebeneinander.
+ */
+export type Register = 'firma' | 'archiv' | 'etiketten' | 'daten';
+
+const REGISTER: Array<[Register, string]> = [
+  ['firma', 'Firma'],
+  ['archiv', 'Archiv'],
+  ['etiketten', 'Etiketten'],
+  ['daten', 'Daten'],
+];
+
+/** Offenes Register — bleibt fuer die Sitzung, auch ueber einen Neuaufbau durch die Dropbox. */
+let register: Register = 'firma';
+
+/** Die Einstellungen gleich beim passenden Register oeffnen, etwa von der Sicherungs-Erinnerung aus. */
+export function einstellungenOeffnen(r: Register): void {
+  register = r;
+  gehe('einstellungen');
+}
+
 export async function einstellungenView(): Promise<HTMLElement[]> {
   const e = await einstellungenLesen();
   zustand.einstellungen = e;
@@ -23,6 +46,20 @@ export async function einstellungenView(): Promise<HTMLElement[]> {
       h('div', { class: 'eyebrow', text: 'MaterialBlitz' }),
       h('h1', { text: 'Einstellungen' }),
     ),
+  );
+
+  // Fest unter dem Kopf, nicht im Rollbereich: auch weit unten in einem
+  // Register ist das naechste nur einen Fingertipp entfernt.
+  const leiste = h('div', { class: 'umschalter register-leiste', role: 'tablist', 'aria-label': 'Bereiche der Einstellungen' },
+    ...REGISTER.map(([r, text]) => h('button', {
+      type: 'button', role: 'tab', text,
+      'aria-selected': String(r === register), 'aria-pressed': String(r === register),
+      onclick: () => {
+        if (r === register) return;
+        register = r;
+        neu();
+      },
+    })),
   );
 
   const feld = (beschriftung: string, wert: string, platzhalter: string) => {
@@ -72,45 +109,52 @@ export async function einstellungenView(): Promise<HTMLElement[]> {
     );
   };
 
+  // Nur das offene Register wird gebaut — die Karten mit Datenbankzugriff
+  // kosten sonst bei jedem Wechsel unnoetig Zeit.
+  const karten = async (): Promise<Array<HTMLElement | null>> => {
+    switch (register) {
+      case 'firma':
+        return [
+          h('div', { class: 'karte' },
+            h('h2', { text: 'Firmenkopf' }),
+            h('p', { text: 'Steht oben auf jedem PDF und jeder Excel-Datei, die ins Büro geht.' }),
+            name.knoten, strasse.knoten, ort.knoten, telefon.knoten,
+            h('button', { class: 'knopf', type: 'button', text: 'Speichern', onclick: speichern }),
+          ),
+          logoKarte(e.logo),
+          // Eigene Karte, nicht beim Firmenkopf: Die Adresse steht **nicht** auf
+          // dem PDF, sie betrifft nur den Weg dorthin.
+          h('div', { class: 'karte' },
+            h('h2', { text: 'Ans Büro' }),
+            h('p', { text: AM_PC
+              ? 'Am PC legt die App Excel und PDF im Download-Ordner ab; von dort kommen sie als Anhang in die Mail. Die Adresse liegt beim Senden in der Zwischenablage und ist im An-Feld nur noch einzufügen.'
+              : 'Der Teilen-Dialog des Handys kennt kein Empfängerfeld — Anhänge und Adressfelder schließen einander aus. Darum legt die App die Adresse beim Senden in die Zwischenablage; in der Mail ist sie dann nur noch ins An-Feld einzusetzen. Ab der zweiten Mail schlägt das Handy sie ohnehin selbst vor.' }),
+            buero.knoten,
+            h('button', { class: 'knopf', type: 'button', text: 'Speichern', onclick: bueroSpeichern }),
+          ),
+          // Bei der Firma: die Lizenz bestimmt, welcher Name und welche Firma
+          // auf Schein und Dashboard stehen.
+          lizenzKarte(e.ausweis ?? 'beides'),
+        ];
+      case 'archiv':
+        return [excelKarte(), archivKarte(), einheitenKarte(e.einheiten), await katalogLeerenKarte()];
+      case 'etiketten':
+        return [etikettenKarte(e)];
+      case 'daten':
+        return [dropboxKarte(), await sicherungKarte()];
+    }
+  };
+
   const rumpf = h('div', { class: 'rumpf' },
     h('div', { class: 'polster' },
-
-      h('div', { class: 'karte' },
-        h('h2', { text: 'Firmenkopf' }),
-        h('p', { text: 'Steht oben auf jedem PDF und jeder Excel-Datei, die ins Büro geht.' }),
-        name.knoten, strasse.knoten, ort.knoten, telefon.knoten,
-        h('button', { class: 'knopf', type: 'button', text: 'Speichern', onclick: speichern }),
-      ),
-
-      logoKarte(e.logo),
-
-      // Eigene Karte, nicht beim Firmenkopf: Die Adresse steht **nicht** auf
-      // dem PDF, sie betrifft nur den Weg dorthin.
-      h('div', { class: 'karte' },
-        h('h2', { text: 'Ans Büro' }),
-        h('p', { text: AM_PC
-          ? 'Am PC legt die App Excel und PDF im Download-Ordner ab; von dort kommen sie als Anhang in die Mail. Die Adresse liegt beim Senden in der Zwischenablage und ist im An-Feld nur noch einzufügen.'
-          : 'Der Teilen-Dialog des Handys kennt kein Empfängerfeld — Anhänge und Adressfelder schließen einander aus. Darum legt die App die Adresse beim Senden in die Zwischenablage; in der Mail ist sie dann nur noch ins An-Feld einzusetzen. Ab der zweiten Mail schlägt das Handy sie ohnehin selbst vor.' }),
-        buero.knoten,
-        h('button', { class: 'knopf', type: 'button', text: 'Speichern', onclick: bueroSpeichern }),
-      ),
-
-      dropboxKarte(),
-      await sicherungKarte(),
-      archivKarte(),
-      excelKarte(),
-      etikettenKarte(e),
-      einheitenKarte(e.einheiten),
-      await katalogLeerenKarte(),
-      lizenzKarte(e.ausweis ?? 'beides'),
-
+      ...(await karten()),
       // Ganz unten und leise: Man sucht sie nur, wenn man wissen will, ob
       // ein Update angekommen ist — und dann findet man sie dort.
       h('p', { class: 'fassung', text: fassungsZeile() }),
     ),
   );
 
-  return [kopf, rumpf];
+  return [kopf, leiste, rumpf];
 }
 
 // ----------------------------------------------------------------- Logo
