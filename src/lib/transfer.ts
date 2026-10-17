@@ -400,6 +400,18 @@ export async function sicherungEinspielen(
       schonDa.add(verlaufSchluessel(neuer));
       await db.verlauf.add(neuer);
     }
+
+    // Eigene Etikettengroessen beider Geraete zusammen — sonst waere die am
+    // PC angelegte nach dem Zusammenfuehren mit dem Handy verschwunden. Die
+    // eigene Wahl geht vor; fehlt sie, gilt die aus der Sicherung.
+    const eigene = await einstellungenLesen();
+    const boegen = [...(eigene.etikettBoegen ?? [])];
+    for (const b of s.einstellungen.etikettBoegen ?? []) if (!boegen.some((x) => x.id === b.id)) boegen.push(b);
+    await einstellungenSchreiben({
+      ...(boegen.length ? { etikettBoegen: boegen } : {}),
+      etikettCode: eigene.etikettCode ?? s.einstellungen.etikettCode,
+      etikettBogen: eigene.etikettBogen ?? s.einstellungen.etikettBogen,
+    });
   });
   await einstellungenSchreiben({ letzteSicherung: Date.now(), neueArtikel: 0 });
 }

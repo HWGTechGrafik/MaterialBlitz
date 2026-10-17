@@ -455,6 +455,9 @@ export async function artikelBearbeiten(id?: number, oben?: HTMLElement, ordnerV
 
 // -------------------------------------------------------------- Etiketten
 
+/** Mehr Etiketten auf einmal sind fast sicher vertippt — 2000 sind 84 volle Boegen 3474. */
+const ETIKETTEN_MAX = 2000;
+
 /** Stueckzahl aus dem Feld: leer oder Unsinn heisst 1, mehr als 999 druckt niemand. */
 function stueckVon(wert: string): number {
   const n = Math.round(Number(wert.replace(',', '.')));
@@ -587,7 +590,13 @@ async function etikettenDrucken(vorauswahl: number[] = []): Promise<void> {
             return;
           }
           const b = gewaehlterBogen();
-          if (b.id !== e.etikettBogen) await einstellungenSchreiben({ etikettBogen: b.id });
+          // Eine vertippte Null zu viel in mehreren Zeilen ergaebe ein PDF,
+          // an dem das Handy minutenlang rechnet.
+          const summe = gewaehlt.reduce((s, z) => s + stueckVon(z.stueck.value), 0);
+          if (summe > ETIKETTEN_MAX) {
+            melden('Zu viele Etiketten', `${summe} Etiketten auf einmal – höchstens ${ETIKETTEN_MAX}. Bitte die Stückzahlen prüfen oder in mehreren Durchgängen drucken.`);
+            return;
+          }
           const etiketten: Etikett[] = [];
           // Was nicht ging wie gewaehlt — hinterher sagen, statt still anders zu drucken.
           let ohneNummer = 0;
@@ -621,6 +630,9 @@ async function etikettenDrucken(vorauswahl: number[] = []): Promise<void> {
           if (ergebnis === 'nicht-moeglich') {
             melden(...NICHT_MOEGLICH);
           }
+          // Erst nach dem Teilen: am iPhone darf vor dem Teilen-Dialog nichts
+          // Vermeidbares mehr warten.
+          if (b.id !== e.etikettBogen) await einstellungenSchreiben({ etikettBogen: b.id });
           neu();
           const anders = [
             ohneNummer ? `${ohneNummer === 1 ? '1 Artikel hat' : `${ohneNummer} Artikel haben`} keine Artikelnummer und ${ohneNummer === 1 ? 'trägt' : 'tragen'} den eigenen Code.` : '',
