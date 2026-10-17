@@ -23,6 +23,10 @@
   color-scheme: light dark;
 }
 
+/* hidden muss auch gegen display:flex der Klassen gewinnen — sonst bleiben
+   etwa beim Filtern der Ordner-Artikel alle Zeilen stehen. */
+[hidden] { display: none !important; }
+
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     --ground: #0c1420;
@@ -128,6 +132,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .kopf h1 { font-size: 19px; font-weight: 600; margin: 0; line-height: 1.2; }
 .kopf .unter { font-size: 13px; color: var(--ink-muted); }
+.kopf-titel { display: flex; align-items: baseline; gap: 8px; }
+.kopf-titel h1 { min-width: 0; }
 .zurueck {
   flex: none; width: 36px; height: 40px; margin-left: -8px;
   border: 0; background: none; color: var(--ader);

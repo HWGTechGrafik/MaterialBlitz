@@ -8,6 +8,7 @@ import { AM_PC, NICHT_MOEGLICH } from '../lib/geraet';
 import { neu } from '../store';
 import { blatt, h, ikon, kopfKnopf, kopfRechts, melden, umschalter, wischbar, type NeuArt } from '../ui';
 import { ordnerAngleichen, ordnerListe } from '../lib/ordner';
+import { suchBegriffe, suchNorm } from '../lib/suche';
 import { baustelleAnlegen } from './uebersicht';
 import { verlaufZeigen } from './verlauf';
 
@@ -180,11 +181,12 @@ async function ordnerBearbeiten(alt?: string): Promise<void> {
         h('span', { class: 'nm', text: a.name }),
         a.ordner && a.ordner !== alt ? h('span', { class: 'wo', text: a.ordner }) : null,
       );
-      return { a, an, el };
+      // Wie die Suche sonst: Umlaute und Grossschreibung egal, auch die Artikelnummer.
+      return { a, an, el, text: suchNorm(`${a.name} ${a.nummer ?? ''}`) };
     });
   filter.addEventListener('input', () => {
-    const q = filter.value.trim().toLowerCase();
-    for (const z of zeilen) z.el.hidden = Boolean(q) && !z.a.name.toLowerCase().includes(q);
+    const begriffe = suchBegriffe(filter.value);
+    for (const z of zeilen) z.el.hidden = !begriffe.every((b) => z.text.includes(b));
   });
 
   const knoepfe: Array<{ text: string; art?: 'haupt' | 'zweit' | 'gefahr'; tun?: () => void }> = [

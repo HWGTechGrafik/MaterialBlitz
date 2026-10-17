@@ -79,11 +79,16 @@ function kopfBauen(baustelle: Baustelle, kunde: Kunde | undefined, schein: Schei
       'div',
       { class: 'kopf-text' },
       h('div', { class: 'eyebrow', text: schein.herkunft ? `Übernommen · ${schein.herkunft}` : 'Offener Schein' }),
-      h('h1', { text: projektTitel(baustelle, kunde?.name) + (schein.bezeichnung ? ` · ${schein.bezeichnung}` : '') }),
+      // Der Zaehler links neben dem Projekt statt ueber den Knoepfen: so sind
+      // die Knoepfe allein das Hoechste rechts, und der Kopf wird schlanker.
+      h('div', { class: 'kopf-titel' },
+        h('span', { class: 'zaehler', text: `${schein.positionen.length} Pos.` }),
+        h('h1', { text: projektTitel(baustelle, kunde?.name) + (schein.bezeichnung ? ` · ${schein.bezeichnung}` : '') }),
+      ),
       h('div', { class: 'unter', text: projektUnter(baustelle, kunde?.name) }),
     ),
     kopfRechts(
-      h('span', { class: 'zaehler', text: `${schein.positionen.length} Pos.` }),
+      null,
       kopfKnopf({
         ikon: 'mehr',
         titel: 'Übergeben, Bezeichnung, mehr',
