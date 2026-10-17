@@ -132,8 +132,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .kopf h1 { font-size: 19px; font-weight: 600; margin: 0; line-height: 1.2; }
 .kopf .unter { font-size: 13px; color: var(--ink-muted); }
-.kopf-titel { display: flex; align-items: baseline; gap: 8px; }
-.kopf-titel h1 { min-width: 0; }
+/* Im Titel etwas kleiner, damit er am Handy oefter noch neben den Namen passt.
+   Reicht der Platz nicht, folgt er in der naechsten Zeile. */
+.zaehler.im-titel {
+  display: inline-block; margin-left: 6px; vertical-align: 2px;
+  font-size: 11px; line-height: 1.2; padding: 3px 7px; letter-spacing: 0.02em;
+}
 .zurueck {
   flex: none; width: 36px; height: 40px; margin-left: -8px;
   border: 0; background: none; color: var(--ader);

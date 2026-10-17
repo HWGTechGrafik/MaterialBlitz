@@ -79,11 +79,12 @@ function kopfBauen(baustelle: Baustelle, kunde: Kunde | undefined, schein: Schei
       'div',
       { class: 'kopf-text' },
       h('div', { class: 'eyebrow', text: schein.herkunft ? `Übernommen · ${schein.herkunft}` : 'Offener Schein' }),
-      // Der Zaehler links neben dem Projekt statt ueber den Knoepfen: so sind
-      // die Knoepfe allein das Hoechste rechts, und der Kopf wird schlanker.
-      h('div', { class: 'kopf-titel' },
-        h('span', { class: 'zaehler', text: `${schein.positionen.length} Pos.` }),
-        h('h1', { text: projektTitel(baustelle, kunde?.name) + (schein.bezeichnung ? ` · ${schein.bezeichnung}` : '') }),
+      // Der Zaehler gleich hinter dem Projektnamen statt ueber den Knoepfen:
+      // so sind die Knoepfe allein das Hoechste rechts, und der Kopf wird
+      // schlanker. Im Textfluss, damit er bei langen Namen dem letzten Wort folgt.
+      h('h1', {},
+        projektTitel(baustelle, kunde?.name) + (schein.bezeichnung ? ` · ${schein.bezeichnung}` : ''),
+        h('span', { class: 'zaehler im-titel', text: `${schein.positionen.length} Pos.` }),
       ),
       h('div', { class: 'unter', text: projektUnter(baustelle, kunde?.name) }),
     ),
