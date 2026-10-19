@@ -439,7 +439,18 @@ export async function abgleichStarten(): Promise<void> {
     melden('Dropbox', f instanceof dbx.DropboxFehler ? f.message : 'Die Dropbox-Anmeldung ist fehlgeschlagen – bitte die Internetverbindung prüfen.');
   }
 
+  // Solange die App offen ist, jede Minute nachsehen. Im Hintergrund steht
+  // die Uhr ganz — sie soll das Handy nicht jede Minute aufwecken.
+  let minutenUhr: number | undefined;
+  const uhrStellen = () => {
+    window.clearInterval(minutenUhr);
+    minutenUhr = document.visibilityState === 'visible'
+      ? window.setInterval(() => { if (aktiv() && bereit) void abgleichen(true, true); }, MINUTE)
+      : undefined;
+  };
+
   document.addEventListener('visibilitychange', () => {
+    uhrStellen();
     if (!aktiv() || !bereit) return;
     if (document.visibilityState === 'hidden') {
       // Handy in den Hintergrund: Ausstehendes sofort hinauf.
@@ -449,11 +460,7 @@ export async function abgleichStarten(): Promise<void> {
       void abgleichen(true);
     }
   });
-
-  // Solange die App offen ist, jede Minute nachsehen.
-  window.setInterval(() => {
-    if (document.visibilityState === 'visible' && aktiv() && bereit) void abgleichen(true, true);
-  }, MINUTE);
+  uhrStellen();
 
   if (aktiv()) await abgleichen(true);
   else bereit = true;
