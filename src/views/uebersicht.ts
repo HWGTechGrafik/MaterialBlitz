@@ -6,7 +6,8 @@ import { artikelBearbeiten, projektLoeschen } from './katalog';
 import { einstellungenOeffnen } from './einstellungen';
 import { tageSeit } from '../lib/format';
 import { dateiWaehlen } from '../lib/share';
-import { AM_PC } from '../lib/geraet';
+import { AM_PC, IM_BROWSER, IOS, installierbar, installieren } from '../lib/geraet';
+import { verbinden as dropboxVerbinden } from '../lib/abgleich';
 import { eingerichtet as dropboxEingerichtet, verbunden as dropboxVerbunden } from '../lib/dropbox';
 import { katalogEinlesen, scheinUebernehmen, sicherungEinspielen, vorschau } from '../lib/transfer';
 import {
@@ -223,7 +224,8 @@ async function projektListe(): Promise<HTMLElement[]> {
 
   const teile: HTMLElement[] = [];
 
-  const erinnerung = await sicherungFaellig();
+  // Die Browser-Warnung sagt das Wichtigere — zwei Kaesten waeren einer zu viel.
+  const erinnerung = browserWarnung() ?? await sicherungFaellig();
   if (erinnerung) teile.push(h('div', { class: 'polster' }, erinnerung));
 
   if (!offen.length) {
@@ -256,6 +258,49 @@ async function projektListe(): Promise<HTMLElement[]> {
   }
 
   return teile;
+}
+
+/**
+ * Nur im Browser offen und ohne Dropbox: Der Browser darf die Daten jederzeit
+ * wegraeumen, und dann ist nichts mehr da. Das ist so einem Kunden passiert -
+ * daher steht der Hinweis, bis die App installiert oder verbunden ist.
+ */
+function browserWarnung(): HTMLElement | null {
+  if (!IM_BROWSER) return null;
+  const dropbox = dropboxEingerichtet();
+  if (dropbox && dropboxVerbunden()) return null;
+
+  const knopf = (text: string, tun: () => void) => h('button', {
+    class: 'knopf leise', type: 'button', text,
+    style: 'text-align:left;padding:0;min-height:32px', onclick: tun,
+  });
+
+  // Am iPhone faengt die installierte App leer an — die Daten muessen vorher
+  // in die Dropbox oder in eine Sicherung, sonst bleiben sie in Safari zurueck.
+  const weg = IOS
+    ? `Teilen-Symbol, dann „Zum Home-Bildschirm“. Vorher ${dropbox ? 'mit Dropbox verbinden' : 'eine Sicherung machen'} — die neue App fängt leer an und holt sich die Daten von dort.`
+    : installierbar()
+      ? 'Als App installieren, dann bleiben sie liegen.'
+      : 'Im Browser-Menü „App installieren“ oder „Zum Startbildschirm hinzufügen“ wählen, dann bleiben sie liegen.';
+
+  return h(
+    'div',
+    { class: 'merk warnung' },
+    h('span', { text: '⚠️' }),
+    h(
+      'span',
+      {},
+      h('b', { text: 'Nur im Browser geöffnet. ' }),
+      'Der Browser darf die Daten dieser Seite ohne Nachfrage löschen — dann sind Projekte und Archiv weg. ',
+      weg,
+      h('br'),
+      dropbox
+        ? knopf('Mit Dropbox verbinden', () => void dropboxVerbinden())
+        : knopf('In den Einstellungen sichern', () => einstellungenOeffnen('daten')),
+      !IOS && installierbar() ? h('br') : null,
+      !IOS && installierbar() ? knopf('App installieren', () => void installieren().then(neu)) : null,
+    ),
+  );
 }
 
 async function sicherungFaellig(): Promise<HTMLElement | null> {
